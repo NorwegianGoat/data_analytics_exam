@@ -3,9 +3,9 @@ import pandas as pd
 import os
 import logging
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.linear_model import LogisticRegression
 
 __DATA_PATH = './ml-25m'
 __SEED = 42
@@ -35,19 +35,19 @@ def bin_rating(ratings: pd.Series) -> pd.Series:
     bins = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
     binned_ratings = pd.cut(
         ratings, bins=bins, labels=bins[1:])
+    label_encoder = LabelEncoder()
+    label_encoder.fit(binned_ratings)
+    binned_ratings = label_encoder.transform(binned_ratings)
     return binned_ratings
 
 
 def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
-    # Linear regression
-    logging.info("Linear regression")
-    linear_reg = LinearRegression()
-    linear_reg.fit(X_train, Y_train)
-    y_pred = linear_reg.predict(x_test)
-    mse = mean_squared_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-    logging.info("MSE Linear regression:" + str(mse))
-    logging.info("r2 Linear regression:" + str(r2))
+    # Logistic regression
+    logging.info("Logistic regression")
+    logistic_reg = LogisticRegression()
+    logistic_reg.fit(X_train, Y_train)
+    y_pred = logistic_reg.predict(x_test)
+    print("Accuracy:", logistic_reg.score(X_test, y_test))
 
 
 def plot(df: pd.DataFrame):
