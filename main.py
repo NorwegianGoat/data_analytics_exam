@@ -48,9 +48,9 @@ def rating_discretization(ratings: pd.Series) -> Tuple[pd.Series, LabelEncoder]:
     return binned_ratings, label_encoder
 
 
-def preprocessing(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
+def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
     # Avg rating discretization
-    logging.info("Binning data in categories")
+    logging.info("Discretizing data in categories")
     bins, encoder = rating_discretization(df["rating"])
     df["rating"] = bins
     df_info = io.StringIO()
@@ -58,7 +58,6 @@ def preprocessing(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
     logging.debug(df)
     logging.debug(df_info.getvalue())
     logging.info("NA values: " + str(df.isna().sum().sum()))
-    # Normalization
     return df, encoder
 
 
@@ -73,6 +72,7 @@ def resample_data(X_train, y_train) -> Tuple[pd.DataFrame, pd.Series]:
 
 
 def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
+    # TODO: Test standardized and normalized data
     pass
 
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     # Load data
     df = load_data(__DATA_PATH)
     # Data pre-processing
-    df, encoder = preprocessing(df)
+    df, encoder = preprocess_data(df)
     # Train, Validation, Test split
     logging.info("Splitting data in train, validation, test")
     X_train, X_test, y_train, y_test = train_test_split(
