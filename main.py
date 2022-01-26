@@ -6,8 +6,10 @@ import os
 import logging
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
+from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
+from sklearn.naive_bayes import GaussianNB
 
 
 __DATA_PATH = './ml-25m'
@@ -61,7 +63,7 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
     return df, encoder
 
 
-def resample_data(X_train, y_train) -> Tuple[pd.DataFrame, pd.Series]:
+def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
     logging.info("Data before resampling: " + str(count))
     ros = RandomOverSampler(random_state=__SEED)
@@ -71,9 +73,25 @@ def resample_data(X_train, y_train) -> Tuple[pd.DataFrame, pd.Series]:
     return X_train, y_train
 
 
+def dim_reduction(X_train, X_val, X_test):
+    logging.info("Old shape" + str(X_train.shape))
+    pca = PCA(random_state=__SEED)
+    pca.fit(X_train)
+    X_train = pca.transform(X_train)
+    X_val = pca.transform(X_val)
+    X_test = pca.transform(X_test)
+    plt.plot(pca.explained_variance_ratio_)
+    plt.show()
+    logging.info("New shape" + str(X_train.shape))
+    return X_train, X_val, X_test
+
+
 def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
     # TODO: Test standardized and normalized data
-    pass
+    nb_classifier = GaussianNB()
+    nb_classifier.fit(X_train, Y_train)
+    y_predict = nb_classifier.predict(x_test)
+    print("Avg. accuracy nb:", nb_classifier.score(x_test, y_test))
 
 
 def plot(df: pd.DataFrame):
@@ -94,9 +112,11 @@ if __name__ == "__main__":
         random_state=__SEED)
     X_train, X_val, y_train, y_val = train_test_split(
         X_train, y_train, test_size=0.25, random_state=__SEED)
+    # Dimensionality reduction
+    X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test)
     # Data resampling
-    X_train, y_train = resample_data(X_train, y_train)
+    X_train, y_train = resample_data(X_train, y_train, encoder)
     # Analysis
     analyze_data(X_train, y_train, X_test, y_test)
     # Plot
-    plot(df)
+    # plot(df)
