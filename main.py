@@ -92,7 +92,7 @@ def dim_reduction(X_train, X_val, X_test):
 
 def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     logging.info("Resampling data")
-    figure = plt.hist(encoder.inverse_transform(y_train))
+    figure = plt.hist(encoder.inverse_transform(y_train), bins="auto")
     xy_labels = ["Class", "Freq."]
     plot(figure, xy_labels, "bef_resample")
     count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
