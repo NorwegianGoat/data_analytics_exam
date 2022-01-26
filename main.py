@@ -66,18 +66,19 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
 
 def dim_reduction(X_train, X_val, X_test):
     vtm = 0.8
-    logging.info("Dimensionality reduction. " + str(vtm) + "% of the variance will be mantained")
+    logging.info("Dimensionality reduction. " + str(vtm) +
+                 "% of the variance will be mantained")
     logging.debug("Shape before dim. reduction" + str(X_train.shape))
     pca = PCA(random_state=__SEED)
     pca.fit(X_train)
     exp_variance = pca.explained_variance_ratio_
-    i, var = 0,0
+    i, var = 0, 0
     for variance in exp_variance:
         # The components that explain the vtm% of the variance
         if var >= vtm:
-            pca = PCA(n_components = i, random_state=__SEED)
+            pca = PCA(n_components=i, random_state=__SEED)
             break
-        i+=1
+        i += 1
         var += variance
     pca.fit(X_train)
     X_train = pca.transform(X_train)
@@ -87,6 +88,7 @@ def dim_reduction(X_train, X_val, X_test):
     plot(figure, ["Eigenvector", "Explained var."], "pca_variance")
     logging.debug("Shape after dim. reduction" + str(X_train.shape))
     return X_train, X_val, X_test
+
 
 def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     logging.info("Resampling data")
