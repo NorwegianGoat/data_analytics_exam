@@ -117,19 +117,15 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
           nb.score(X_train, Y_train))
     print("Avg. accuracy nb on testing:", nb.score(x_test, y_test))
     # Random forest classifier
-    for criterion in ['gini', 'entropy']:
-        rf = RandomForestClassifier(
-            criterion=criterion, random_state=__SEED)
-        rf.fit(X_train, Y_train)
-        rf.predict(X_test)
-        print("Avg. accuracy rf on training: " +
-              str(rf.score(X_train, Y_train)) + ". Using " + criterion)
-        print("Avg. accuracy rf on testing: " +
-              str(rf.score(x_test, y_test)) + ". Using " + criterion)
-        '''feature_rank = pd.Series(
-            rf.feature_importances_, X_train.dtypes.names).sort_values(ascending=False)
-        plt.bar(x=feature_rank.index, height=feature_rank)
-        plot(["feature", 'importance'], 'rf_feature_importance')'''
+    rf = RandomForestClassifier(random_state=__SEED)
+    rf.fit(X_train, Y_train)
+    rf.predict(X_test)
+    print("Avg. accuracy rf on training: " + str(rf.score(X_train, Y_train)))
+    print("Avg. accuracy rf on testing: " + str(rf.score(x_test, y_test)))
+    '''feature_rank = pd.Series(
+        rf.feature_importances_, X_train.dtypes.names).sort_values(ascending=False)
+    plt.bar(x=feature_rank.index, height=feature_rank)
+    plot(["feature", 'importance'], 'rf_feature_importance')'''
 
 
 def plot(axis_labels, fig_name):
