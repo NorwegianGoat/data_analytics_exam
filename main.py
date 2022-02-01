@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
 
 
 __DATA_PATH = './ml-25m'
@@ -67,7 +68,7 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
 def dim_reduction(X_train, X_val, X_test):
     vtm = 0.8
     logging.info("Dimensionality reduction. " + str(vtm) +
-                 "% of the variance will be mantained")
+                 " of the variance will be mantained")
     logging.debug("Shape before dim. reduction" + str(X_train.shape))
     pca = PCA(random_state=__SEED)
     pca.fit(X_train)
@@ -85,7 +86,7 @@ def dim_reduction(X_train, X_val, X_test):
     X_val = pca.transform(X_val)
     X_test = pca.transform(X_test)
     figure = plt.plot(pca.explained_variance_ratio_)
-    plot(figure, ["Eigenvector", "Explained var."], "pca_variance")
+    plot(["Eigenvector", "Explained var."], "pca_variance")
     logging.debug("Shape after dim. reduction" + str(X_train.shape))
     return X_train, X_val, X_test
 
@@ -94,7 +95,7 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     logging.info("Resampling data")
     figure = plt.hist(encoder.inverse_transform(y_train), bins="auto")
     xy_labels = ["Class", "Freq."]
-    plot(figure, xy_labels, "bef_resample")
+    plot(xy_labels, "bef_resample")
     count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
     logging.debug("Data before resampling: " + str(count))
     ros = RandomOverSampler(random_state=__SEED)
@@ -102,19 +103,36 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
     logging.debug("Data after the sampling" + str(count))
     figure = plt.hist(encoder.inverse_transform(y_train), bins="auto")
-    plot(figure, xy_labels, "aft_resample")
+    plot(xy_labels, "aft_resample")
     return X_train, y_train
 
 
 def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
     # TODO: Test standardized and normalized data
-    nb_classifier = GaussianNB()
-    nb_classifier.fit(X_train, Y_train)
-    y_predict = nb_classifier.predict(x_test)
-    print("Avg. accuracy nb:", nb_classifier.score(x_test, y_test))
+    # Naive Bayes
+    nb = GaussianNB()
+    nb.fit(X_train, Y_train)
+    y_predict = nb.predict(x_test)
+    print("Avg. accuracy nb on training:",
+          nb.score(X_train, Y_train))
+    print("Avg. accuracy nb on testing:", nb.score(x_test, y_test))
+    # Random forest classifier
+    for criterion in ['gini', 'entropy']:
+        rf = RandomForestClassifier(
+            criterion=criterion, random_state=__SEED)
+        rf.fit(X_train, Y_train)
+        rf.predict(X_test)
+        print("Avg. accuracy rf on training: " +
+              str(rf.score(X_train, Y_train)) + ". Using " + criterion)
+        print("Avg. accuracy rf on testing: " +
+              str(rf.score(x_test, y_test)) + ". Using " + criterion)
+        '''feature_rank = pd.Series(
+            rf.feature_importances_, X_train.dtypes.names).sort_values(ascending=False)
+        plt.bar(x=feature_rank.index, height=feature_rank)
+        plot(["feature", 'importance'], 'rf_feature_importance')'''
 
 
-def plot(figure, axis_labels, fig_name):
+def plot(axis_labels, fig_name):
     plt.xlabel(axis_labels[0])
     plt.ylabel(axis_labels[1])
     plt.savefig(os.path.join(__IMG_PATH, fig_name))
