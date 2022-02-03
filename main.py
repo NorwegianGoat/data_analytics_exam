@@ -5,13 +5,13 @@ import numpy as np
 import os
 import logging
 import matplotlib.pyplot as plt
-import sklearn
 from sklearn.preprocessing import LabelEncoder
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 
 
 __DATA_PATH = './ml-25m'
@@ -112,6 +112,12 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     rf.predict(x_test)
     print("RF accuracy on training: " + str(rf.score(X_train, Y_train)))
     print("RF accuracy on testing: " + str(rf.score(x_test, y_test)))
+    # SVM
+    svc = SVC()
+    svc.fit(X_train, Y_train)
+    svc.predict(x_test)
+    print("SVC accuracy on training:", svc.score(X_train, Y_train))
+    print("SVC accuracy on testing:", svc.score(x_test, y_test))
 
 
 def plot(axis_labels, fig_name):
