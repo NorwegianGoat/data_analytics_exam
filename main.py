@@ -1,4 +1,5 @@
 import io
+from time import time
 from typing import Tuple
 import pandas as pd
 import numpy as np
@@ -12,12 +13,51 @@ from imblearn.over_sampling import RandomOverSampler
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-
+import torch
 
 __DATA_PATH = './ml-25m'
 __IMG_PATH = './img'
 __SEED = 42
 __logging_level = logging.INFO
+
+
+class FeedFoward(torch.nn.Module):
+    def __init__(self, input_layer_size: int, hidden_layer_size: int, output_layer_size: int, number_of_layers: int):
+        super(FeedFoward, self).__init__()
+        self.input_layer_size = input_layer_size
+        self.hidden_layer_size = hidden_layer_size
+        # Input layer + output layer + hidden layers
+        self.number_of_layers = number_of_layers+2
+        self.output_layer_size = output_layer_size  # The number of output classes
+        self.activation_function = torch.nn.ReLU()
+        # Hidden layers
+        torch.nn.Sequential()
+        self.layers = [torch.nn.Linear(hidden_layer_size, hidden_layer_size)
+                       for i in range(0, number_of_layers)]
+        # Add the input layer
+        self.layers.insert(0, torch.nn.Linear(
+            input_layer_size, hidden_layer_size))
+        # Add the output layer
+        self.layers.append(torch.nn.Linear(
+            hidden_layer_size, output_layer_size))
+
+    def foward(self, x):
+        for layer in self.layers:
+            z = layer(x)
+            # Just for convenience, this is conceptually y^.
+            # Otherwhise we have to write y = self.activation_function(z); x = y
+            x = self.activation_function(z)
+        return x
+
+    def _train(self, criterion, optimizer, epochs, X_train, Y_train):
+        pass
+
+    def __str__(self) -> str:
+        return str({"input_size": self.input_layer_size,
+                    "hidden_size": self.hidden_layer_size,
+                    "number_of_layers": self.number_of_layers,
+                    "output_layer_size": self.output_layer_size,
+                    "activation_function": self.activation_function})
 
 
 def load_data(path: str) -> pd.DataFrame:
@@ -67,10 +107,11 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
 
 
 def dim_reduction(X_train, X_val, X_test):
+    n_components = 0.8
     logging.info(
-        "Dimensionality reduction. 80% of the variance will be mantained")
+        "Dimensionality reduction. " + str(n_components*100) + "% of the variance will be mantained")
     logging.debug("Shape before dim. reduction" + str(X_train.shape))
-    pca = PCA(n_components=0.8, random_state=__SEED)
+    pca = PCA(n_components, random_state=__SEED)
     pca.fit(X_train)
     X_train = pca.transform(X_train)
     X_val = pca.transform(X_val)
@@ -100,7 +141,7 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
 def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
     # TODO: Test standardized and normalized data
     # Naive Bayes
-    nb = GaussianNB()
+    '''nb = GaussianNB()
     nb.fit(X_train, Y_train)
     nb.predict(x_test)
     print("NB accuracy on training",
@@ -113,11 +154,18 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     print("RF accuracy on training: " + str(rf.score(X_train, Y_train)))
     print("RF accuracy on testing: " + str(rf.score(x_test, y_test)))
     # SVM
-    svc = SVC()
+    svc = SVC(kernel='rbf')
     svc.fit(X_train, Y_train)
     svc.predict(x_test)
     print("SVC accuracy on training:", svc.score(X_train, Y_train))
-    print("SVC accuracy on testing:", svc.score(x_test, y_test))
+    print("SVC accuracy on testing:", svc.score(x_test, y_test))'''
+    # MLP
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # tensor = torch.from_numpy(x_test)
+    # tensor.to(device)
+    # mlp to device
+    mlp = FeedFoward(X_train.shape[1], 512, len(Y_train.unique()), 10)
+    logging.info(mlp)
 
 
 def plot(axis_labels, fig_name):
@@ -128,6 +176,7 @@ def plot(axis_labels, fig_name):
 
 
 if __name__ == "__main__":
+    t0 = time()
     logging.basicConfig(level=__logging_level)
     # Load data
     df = load_data(__DATA_PATH)
@@ -146,3 +195,4 @@ if __name__ == "__main__":
     X_train, y_train = resample_data(X_train, y_train, encoder)
     # Analysis
     analyze_data(X_train, y_train, X_test, y_test)
+    logging.info("Elapsed time " + str(time()-t0)[0:5])
