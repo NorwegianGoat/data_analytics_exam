@@ -13,6 +13,7 @@ from imblearn.over_sampling import RandomOverSampler
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
+from collections import OrderedDict
 import torch
 
 __DATA_PATH = './ml-25m'
@@ -21,33 +22,32 @@ __SEED = 42
 __logging_level = logging.INFO
 
 
-class FeedFoward(torch.nn.Module):
-    def __init__(self, input_layer_size: int, hidden_layer_size: int, output_layer_size: int, number_of_layers: int):
-        super(FeedFoward, self).__init__()
+class NeuralNetwork(torch.nn.Module):
+    def __init__(self, input_layer_size: int, hidden_layer_size: int, output_layer_size: int, number_hidden_layers: int):
+        super(NeuralNetwork, self).__init__()
         self.input_layer_size = input_layer_size
         self.hidden_layer_size = hidden_layer_size
+        self.number_hidden_layers = number_hidden_layers
         # Input layer + output layer + hidden layers
-        self.number_of_layers = number_of_layers+2
+        self.number_of_layers = number_hidden_layers+2
         self.output_layer_size = output_layer_size  # The number of output classes
         self.activation_function = torch.nn.ReLU()
-        # Hidden layers
-        torch.nn.Sequential()
-        self.layers = [torch.nn.Linear(hidden_layer_size, hidden_layer_size)
-                       for i in range(0, number_of_layers)]
-        # Add the input layer
-        self.layers.insert(0, torch.nn.Linear(
-            input_layer_size, hidden_layer_size))
-        # Add the output layer
-        self.layers.append(torch.nn.Linear(
-            hidden_layer_size, output_layer_size))
+        # Building the layers
+        layers = OrderedDict()
+        layers[str(0)] = torch.nn.Linear(hidden_layer_size, hidden_layer_size)
+        layers[str(1)] = self.activation_function
+        for i in range(0, number_hidden_layers):
+            layers[str(len(layers))] = torch.nn.Linear(
+                hidden_layer_size, hidden_layer_size)
+            layers[str(len(layers))] = self.activation_function
+        layers[str(len(layers))] = torch.nn.Linear(
+            hidden_layer_size, output_layer_size)
+        self.linear_relu_stack = torch.nn.Sequential(layers)
 
     def foward(self, x):
-        for layer in self.layers:
-            z = layer(x)
-            # Just for convenience, this is conceptually y^.
-            # Otherwhise we have to write y = self.activation_function(z); x = y
-            x = self.activation_function(z)
-        return x
+        #x = self.flatten(x)
+        logits = self.linear_relu_stack(x)
+        return logits
 
     def _train(self, criterion, optimizer, epochs, X_train, Y_train):
         pass
@@ -56,6 +56,7 @@ class FeedFoward(torch.nn.Module):
         return str({"input_size": self.input_layer_size,
                     "hidden_size": self.hidden_layer_size,
                     "number_of_layers": self.number_of_layers,
+                    "number_hidden_layers": self.number_hidden_layers,
                     "output_layer_size": self.output_layer_size,
                     "activation_function": self.activation_function})
 
@@ -161,10 +162,11 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     print("SVC accuracy on testing:", svc.score(x_test, y_test))'''
     # MLP
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info("This device have " + device.type + " available.")
     # tensor = torch.from_numpy(x_test)
     # tensor.to(device)
     # mlp to device
-    mlp = FeedFoward(X_train.shape[1], 512, len(Y_train.unique()), 10)
+    mlp = NeuralNetwork(X_train.shape[1], 512, len(Y_train.unique()), 10)
     logging.info(mlp)
 
 
@@ -195,4 +197,4 @@ if __name__ == "__main__":
     X_train, y_train = resample_data(X_train, y_train, encoder)
     # Analysis
     analyze_data(X_train, y_train, X_test, y_test)
-    logging.info("Elapsed time " + str(time()-t0)[0:5])
+    logging.info("Elapsed time " + str(time()-t0) + "s")
