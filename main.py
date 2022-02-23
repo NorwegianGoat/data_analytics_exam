@@ -184,16 +184,21 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     print("SVC accuracy on testing:", svc.score(x_test, y_test))'''
     # MLP
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # device = torch.device("cpu")
     logging.info("This device has " + device.type + " available.")
-    mlp = NeuralNetwork(X_train.shape[1], 512, len(Y_train.unique()), 2)
-    logging.info(mlp)
+    # MLP hyperparams
+    hidden_layer_size = 512
+    number_hidden_layers = 5
+    lr = 0.01
+    momentum = 0.99
     epochs = 500
+    mlp = NeuralNetwork(
+        X_train.shape[1], hidden_layer_size, len(Y_train.unique()), number_hidden_layers)
+    logging.info(mlp)
     X_train, Y_train = torch.FloatTensor(X_train).to(
         device), torch.LongTensor(Y_train).to(device)
     mlp.to(device)
     mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
-        mlp.parameters(), lr=0.01, momentum=0.99), epochs, X_train, Y_train)
+        mlp.parameters(), lr, momentum), epochs, X_train, Y_train)
     plt.plot(range(epochs), loss)
     plot(["Epochs", "Loss"], "mlp_loss_progr")
 
