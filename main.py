@@ -187,7 +187,7 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     logging.info("This device has " + device.type + " available.")
     # MLP hyperparams
     hidden_layer_size = 512
-    number_hidden_layers = 5
+    number_hidden_layers = 2
     lr = 0.01
     momentum = 0.99
     epochs = 500
