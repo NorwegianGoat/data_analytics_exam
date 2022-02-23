@@ -19,7 +19,7 @@ import torch
 __DATA_PATH = './ml-25m'
 __IMG_PATH = './img'
 __SEED = 42
-__logging_level = logging.INFO
+__logging_level = logging.DEBUG
 
 
 class NeuralNetwork(torch.nn.Module):
@@ -34,7 +34,7 @@ class NeuralNetwork(torch.nn.Module):
         self.activation_function = torch.nn.ReLU()
         # Building the layers
         layers = OrderedDict()
-        layers[str(0)] = torch.nn.Linear(hidden_layer_size, hidden_layer_size)
+        layers[str(0)] = torch.nn.Linear(input_layer_size, hidden_layer_size)
         layers[str(1)] = self.activation_function
         for i in range(0, number_hidden_layers):
             layers[str(len(layers))] = torch.nn.Linear(
@@ -44,13 +44,35 @@ class NeuralNetwork(torch.nn.Module):
             hidden_layer_size, output_layer_size)
         self.linear_relu_stack = torch.nn.Sequential(layers)
 
-    def foward(self, x):
+    def forward(self, x):
         #x = self.flatten(x)
         logits = self.linear_relu_stack(x)
         return logits
 
     def _train(self, criterion, optimizer, epochs, X_train, Y_train):
-        pass
+        self.train()
+        loss_over_epochs = []
+        for epoch in range(epochs):
+            # Resets gradient, otherwise it's summed over time
+            optimizer.zero_grad()
+            # Foward
+            y_pred = self.forward(X_train)
+            # Backpropagation
+            loss = criterion(y_pred, Y_train)
+            logging.debug("Epoch: " + str(epoch) +
+                          " loss: " + str(loss.item()))
+            loss_over_epochs.append(loss.item())
+            loss.backward()
+            optimizer.step()
+        # Returns the trained neural net and the loss over the training
+        return self, loss_over_epochs
+
+    def _test(self, X_val, Y_val):
+        # Puts the nn in test mode, no dropout, etc.
+        self.eval()
+        y_pred = self.forward(X_val)
+        logging.info(y_pred)
+        y_pred = y_pred.argmax()
 
     def __str__(self) -> str:
         return str({"input_size": self.input_layer_size,
@@ -162,12 +184,17 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     print("SVC accuracy on testing:", svc.score(x_test, y_test))'''
     # MLP
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info("This device have " + device.type + " available.")
+    logging.info("This device has " + device.type + " available.")
     # tensor = torch.from_numpy(x_test)
     # tensor.to(device)
     # mlp to device
-    mlp = NeuralNetwork(X_train.shape[1], 512, len(Y_train.unique()), 10)
+    mlp = NeuralNetwork(X_train.shape[1], 512, len(Y_train.unique()), 2)
     logging.info(mlp)
+    epochs = 500
+    mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(mlp.parameters(), lr=0.01, momentum=0.99), epochs, torch.FloatTensor(
+        X_train), torch.LongTensor(Y_train))
+    plt.plot(range(epochs), loss)
+    plot(["Epochs", "Loss"], "mlp_loss_progr")
 
 
 def plot(axis_labels, fig_name):
