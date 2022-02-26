@@ -15,6 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from collections import OrderedDict
 import torch
+from torch.utils.data import DataLoader
 
 __DATA_PATH = './ml-25m'
 __IMG_PATH = './img'
@@ -29,9 +30,8 @@ def _available_devices() -> torch.device:
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, X: pd.DataFrame, Y: pd.Series):
-        self.device = _available_devices()
-        self.X = torch.FloatTensor(X).to(self.device)
-        self.Y = torch.LongTensor(Y).to(self.device)
+        self.X = torch.FloatTensor(X)
+        self.Y = torch.LongTensor(Y)
         self.classes = len(self.Y.unique())
 
     def __len__(self):
@@ -66,25 +66,31 @@ class NeuralNetwork(torch.nn.Module):
         self.to(self.device)
 
     def forward(self, x):
-        #x = self.flatten(x)
+        # x = self.flatten(x)
         logits = self.linear_relu_stack(x)
         return logits
 
-    def _train(self, criterion, optimizer, epochs, X_train, Y_train):
+    def _train(self, criterion, optimizer, epochs, data: DataLoader):
         self.train()
         loss_over_epochs = []
         for epoch in range(epochs):
-            # Resets gradient, otherwise it's summed over time
-            optimizer.zero_grad()
-            # Foward
-            y_pred = self.forward(X_train)
-            # Backpropagation
-            loss = criterion(y_pred, Y_train)
-            logging.debug("Epoch: " + str(epoch) +
-                          " loss: " + str(loss.item()))
-            loss_over_epochs.append(loss.item())
-            loss.backward()
-            optimizer.step()
+            # Minibatch, we iterate over data passed by data loader for each epoch
+            for batch in data:
+                # We only send the the batches we use to device, in this way we
+                # use less GPU ram
+                x = batch[0].to(self.device)
+                y = batch[1].to(self.device)
+                # Resets gradient, otherwise it's summed over time
+                optimizer.zero_grad()
+                # Foward
+                y_pred = self.forward(x)
+                # Backpropagation
+                loss = criterion(y_pred, y)
+                logging.debug("Epoch: " + str(epoch) + " loss: " +
+                              str(loss.item()))
+                loss_over_epochs.append(loss.item())
+                loss.backward()
+                optimizer.step()
         # Returns the trained neural net and the loss over the training
         return self, loss_over_epochs
 
@@ -182,7 +188,7 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     return X_train, y_train
 
 
-def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
+def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test: pd.Series):
     # TODO: Test standardized and normalized data
     # Naive Bayes
     '''nb = GaussianNB()
@@ -211,15 +217,19 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     number_hidden_layers = 2
     lr = 0.01
     momentum = 0.99
+    batch_size = 32
     epochs = 500
-   # mlp = NeuralNetwork(
-    #    X_train.shape[1], hidden_layer_size, len(Y_train.unique()), number_hidden_layers)
-    # logging.info(mlp)
-    data_train = Dataset(X_train, Y_train)
-    # mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
-    #    mlp.parameters(), lr, momentum), epochs, data_train.X, data_train.Y)
-    #plt.plot(range(epochs), loss)
-    #plot(["Epochs", "Loss"], "mlp_loss_progr")
+    train_loader = DataLoader(
+        Dataset(X_train, Y_train), batch_size, shuffle=True, drop_last=True)
+    mlp = NeuralNetwork(X_train.shape[1], hidden_layer_size, len(
+        Y_train.unique()), number_hidden_layers)
+    logging.info(mlp)
+    mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
+        mlp.parameters(), lr, momentum), epochs, train_loader)
+    plt.plot(range(epochs), loss)
+    plot(["Epochs", "Loss"], "mlp_loss_progr")
+    # test_loader = DataLoader(Dataset(x_test, y_test),batch_size, shuffle=True, drop_last=True)
+    # TODO: Test neural network
 
 
 def plot(axis_labels, fig_name):
