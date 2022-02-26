@@ -22,9 +22,29 @@ __SEED = 42
 __logging_level = logging.DEBUG
 
 
+def _available_devices() -> torch.device:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return device
+
+
+class Dataset(torch.utils.data.Dataset):
+    def __init__(self, X: pd.DataFrame, Y: pd.Series):
+        self.device = _available_devices()
+        self.X = torch.FloatTensor(X).to(self.device)
+        self.Y = torch.LongTensor(Y).to(self.device)
+        self.classes = len(self.Y.unique())
+
+    def __len__(self):
+        return self.X.shape[0]
+
+    def __getitem__(self, id):
+        return self.X[id, :], self.Y[id]
+
+
 class NeuralNetwork(torch.nn.Module):
     def __init__(self, input_layer_size: int, hidden_layer_size: int, output_layer_size: int, number_hidden_layers: int):
         super(NeuralNetwork, self).__init__()
+        self.device = _available_devices()
         self.input_layer_size = input_layer_size
         self.hidden_layer_size = hidden_layer_size
         self.number_hidden_layers = number_hidden_layers
@@ -43,6 +63,7 @@ class NeuralNetwork(torch.nn.Module):
         layers[str(len(layers))] = torch.nn.Linear(
             hidden_layer_size, output_layer_size)
         self.linear_relu_stack = torch.nn.Sequential(layers)
+        self.to(self.device)
 
     def forward(self, x):
         #x = self.flatten(x)
@@ -183,24 +204,22 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     print("SVC accuracy on training:", svc.score(X_train, Y_train))
     print("SVC accuracy on testing:", svc.score(x_test, y_test))'''
     # MLP
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info("This device has " + device.type + " available.")
+    logging.info("This device has " +
+                 _available_devices().type + " available.")
     # MLP hyperparams
     hidden_layer_size = 512
     number_hidden_layers = 2
     lr = 0.01
     momentum = 0.99
     epochs = 500
-    mlp = NeuralNetwork(
-        X_train.shape[1], hidden_layer_size, len(Y_train.unique()), number_hidden_layers)
-    logging.info(mlp)
-    X_train, Y_train = torch.FloatTensor(X_train).to(
-        device), torch.LongTensor(Y_train).to(device)
-    mlp.to(device)
-    mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
-        mlp.parameters(), lr, momentum), epochs, X_train, Y_train)
-    plt.plot(range(epochs), loss)
-    plot(["Epochs", "Loss"], "mlp_loss_progr")
+   # mlp = NeuralNetwork(
+    #    X_train.shape[1], hidden_layer_size, len(Y_train.unique()), number_hidden_layers)
+    # logging.info(mlp)
+    data_train = Dataset(X_train, Y_train)
+    # mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
+    #    mlp.parameters(), lr, momentum), epochs, data_train.X, data_train.Y)
+    #plt.plot(range(epochs), loss)
+    #plot(["Epochs", "Loss"], "mlp_loss_progr")
 
 
 def plot(axis_labels, fig_name):
