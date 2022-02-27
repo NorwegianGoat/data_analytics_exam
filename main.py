@@ -15,12 +15,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from collections import OrderedDict
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 __DATA_PATH = './ml-25m'
 __IMG_PATH = './img'
 __SEED = 42
-__logging_level = logging.DEBUG
+__logging_level = logging.INFO
 
 
 def _available_devices() -> torch.device:
@@ -75,6 +75,7 @@ class NeuralNetwork(torch.nn.Module):
         loss_over_epochs = []
         for epoch in range(epochs):
             # Minibatch, we iterate over data passed by data loader for each epoch
+            epoch_loss = []
             for batch in data:
                 # We only send the the batches we use to device, in this way we
                 # use less GPU ram
@@ -86,11 +87,16 @@ class NeuralNetwork(torch.nn.Module):
                 y_pred = self.forward(x)
                 # Backpropagation
                 loss = criterion(y_pred, y)
-                logging.debug("Epoch: " + str(epoch) + " loss: " +
-                              str(loss.item()))
-                loss_over_epochs.append(loss.item())
+                epoch_loss.append(loss.item())
                 loss.backward()
                 optimizer.step()
+            loss = 0
+            for loss_i in epoch_loss:
+                loss += loss_i
+            loss = loss/data.batch_size
+            logging.info("Epoch: " + str(epoch) + " avg. loss: " +
+                         str(loss))
+            loss_over_epochs.append(loss)
         # Returns the trained neural net and the loss over the training
         return self, loss_over_epochs
 
@@ -216,9 +222,9 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     hidden_layer_size = 512
     number_hidden_layers = 2
     lr = 0.01
-    momentum = 0.99
+    momentum = 0.09
     batch_size = 32
-    epochs = 500
+    epochs = 100
     train_loader = DataLoader(
         Dataset(X_train, Y_train), batch_size, shuffle=True, drop_last=True)
     mlp = NeuralNetwork(X_train.shape[1], hidden_layer_size, len(
