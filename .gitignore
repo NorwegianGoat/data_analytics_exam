@@ -131,3 +131,4 @@ dmypy.json
 # Extra 
 ml-25m/
 .vscode
+train*

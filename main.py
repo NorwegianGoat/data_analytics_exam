@@ -1,3 +1,4 @@
+import subprocess
 import io
 from time import time
 from typing import Tuple
@@ -16,10 +17,10 @@ from sklearn.svm import SVC
 from collections import OrderedDict
 import torch
 from torch.utils.data import DataLoader
-import itertools
+from ray import tune
 
 __DATA_PATH = './ml-25m'
-__IMG_PATH = './img'
+__IMG_PATH = os.path.join(os.path.realpath('.'), 'img')
 __SEED = 42
 __logging_level = logging.INFO
 
@@ -57,12 +58,12 @@ class NeuralNetwork(torch.nn.Module):
         layers = OrderedDict()
         layers[str(len(layers))] = torch.nn.Linear(
             input_layer_size, hidden_layer_size)
-        layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
+        # layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
         layers[str(len(layers))] = self.activation_function
         for i in range(0, number_hidden_layers):
             layers[str(len(layers))] = torch.nn.Linear(
                 hidden_layer_size, hidden_layer_size)
-            layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
+            # layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
             layers[str(len(layers))] = self.activation_function
         layers[str(len(layers))] = torch.nn.Linear(
             hidden_layer_size, output_layer_size)
@@ -94,10 +95,7 @@ class NeuralNetwork(torch.nn.Module):
                 epoch_loss.append(loss.item())
                 loss.backward()
                 optimizer.step()
-            loss = 0
-            for loss_i in epoch_loss:
-                loss += loss_i
-            loss = loss/data.batch_size
+            loss = np.mean(epoch_loss)
             logging.info("Epoch: " + str(epoch) + " avg. loss: " +
                          str(loss))
             loss_over_epochs.append(loss)
@@ -198,54 +196,51 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     return X_train, y_train
 
 
-def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test: pd.Series):
+def train_models(X_train: pd.DataFrame, Y_train: pd.Series):
     # TODO: Test standardized and normalized data
+    # TODO: Return hyperparams and best trained models
     # Naive Bayes
-    '''nb = GaussianNB()
+    nb = GaussianNB()
     nb.fit(X_train, Y_train)
-    nb.predict(x_test)
     print("NB accuracy on training",
           nb.score(X_train, Y_train))
-    print("NB accuracy on testing:", nb.score(x_test, y_test))
     # Random forest classifier
     rf = RandomForestClassifier(random_state=__SEED)
     rf.fit(X_train, Y_train)
-    rf.predict(x_test)
-    print("RF accuracy on training: " + str(rf.score(X_train, Y_train)))
-    print("RF accuracy on testing: " + str(rf.score(x_test, y_test)))
+    print("RF accuracy on training: ", rf.score(X_train, Y_train))
     # SVM
     svc = SVC(kernel='rbf')
     svc.fit(X_train, Y_train)
-    svc.predict(x_test)
     print("SVC accuracy on training:", svc.score(X_train, Y_train))
-    print("SVC accuracy on testing:", svc.score(x_test, y_test))'''
     # MLP
     logging.info("This device has " +
                  _available_devices().type + " available.")
     # MLP hyperparams
-    hidden_layer_size = [512]  # [8, 16, 32, 64, 128, 256, 512]
-    number_hidden_layers = [2]  # [2, 4, 8, 16]
-    learning_rate = [0.01]  # [0.001, 0.01]
-    momentum = [0.009]  # [0.009, 0.09]
-    batch_size = [32]  # [8, 16, 32]
-    epochs = [100]  # [10, 100, 500]
-    hyperparams = itertools.product(
-        hidden_layer_size, number_hidden_layers, learning_rate, momentum, batch_size, epochs)
-    # torch.use_deterministic_algorithms(True)
-    # torch.manual_seed(__SEED)
-    # Questa e` una grid search... se volessi fare una random?
-    for hidden_size, number_hidden, lr, m, size, epoch in hyperparams:
+    hidden_layer_size = tune.grid_search([8, 16, 32, 64, 128, 256, 512])
+    number_hidden_layers = tune.grid_search([2, 4, 8, 16])
+    learning_rate = tune.grid_search([0.001, 0.01])
+    momentum = tune.grid_search([0.009, 0.09])
+    batch_size = tune.grid_search([8, 16, 32])
+    epochs = tune.grid_search([2, 4, 8])
+    configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
+               "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
+               "epochs": epochs}
+
+    def train_nn(config: dict):
         train_loader = DataLoader(
-            Dataset(X_train, Y_train), size, shuffle=True, drop_last=True)
-        mlp = NeuralNetwork(X_train.shape[1], hidden_size, len(
-            Y_train.unique()), number_hidden)
+            Dataset(X_train, Y_train), config['batch_size'], shuffle=True, drop_last=True)
+        mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], len(
+            Y_train.unique()), config['number_hidden_layers'])
         logging.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
-            mlp.parameters(), lr, m), epoch, train_loader)
-    plt.plot(range(epochs), loss)
-    plot(["Epochs", "Loss"], "mlp_loss_progr_batchnorm")
-    # test_loader = DataLoader(Dataset(x_test, y_test),batch_size, shuffle=True, drop_last=True)
-    # TODO: Test neural network
+            mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
+        tune.report(mean_loss=loss[-1])
+        plt.plot(range(config['epochs']), loss)
+        plot(["Epochs", "Loss"], "mlp_loss_progr")
+    results = tune.run(train_nn, config=configs,
+                       local_dir=os.path.realpath("."), verbose=0)
+    logging.info("Best config nn is: " +
+                 str(results.get_best_config(metric="mean_loss", mode="min")))
 
 
 def plot(axis_labels, fig_name):
@@ -273,6 +268,7 @@ if __name__ == "__main__":
     X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test)
     # Data resampling
     X_train, y_train = resample_data(X_train, y_train, encoder)
-    # Analysis
-    analyze_data(X_train, y_train, X_test, y_test)
+    # Models train
+    trained_models = train_models(X_train, y_train)
+    # Models test
     logging.info("Elapsed time " + str(time()-t0) + "s")
