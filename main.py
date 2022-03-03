@@ -15,7 +15,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from collections import OrderedDict
 import torch
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
+import itertools
 
 __DATA_PATH = './ml-25m'
 __IMG_PATH = './img'
@@ -54,11 +55,14 @@ class NeuralNetwork(torch.nn.Module):
         self.activation_function = torch.nn.ReLU()
         # Building the layers
         layers = OrderedDict()
-        layers[str(0)] = torch.nn.Linear(input_layer_size, hidden_layer_size)
-        layers[str(1)] = self.activation_function
+        layers[str(len(layers))] = torch.nn.Linear(
+            input_layer_size, hidden_layer_size)
+        layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
+        layers[str(len(layers))] = self.activation_function
         for i in range(0, number_hidden_layers):
             layers[str(len(layers))] = torch.nn.Linear(
                 hidden_layer_size, hidden_layer_size)
+            layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
             layers[str(len(layers))] = self.activation_function
         layers[str(len(layers))] = torch.nn.Linear(
             hidden_layer_size, output_layer_size)
@@ -219,21 +223,27 @@ def analyze_data(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     logging.info("This device has " +
                  _available_devices().type + " available.")
     # MLP hyperparams
-    hidden_layer_size = 512
-    number_hidden_layers = 2
-    lr = 0.01
-    momentum = 0.09
-    batch_size = 32
-    epochs = 100
-    train_loader = DataLoader(
-        Dataset(X_train, Y_train), batch_size, shuffle=True, drop_last=True)
-    mlp = NeuralNetwork(X_train.shape[1], hidden_layer_size, len(
-        Y_train.unique()), number_hidden_layers)
-    logging.info(mlp)
-    mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
-        mlp.parameters(), lr, momentum), epochs, train_loader)
+    hidden_layer_size = [512]  # [8, 16, 32, 64, 128, 256, 512]
+    number_hidden_layers = [2]  # [2, 4, 8, 16]
+    learning_rate = [0.01]  # [0.001, 0.01]
+    momentum = [0.009]  # [0.009, 0.09]
+    batch_size = [32]  # [8, 16, 32]
+    epochs = [100]  # [10, 100, 500]
+    hyperparams = itertools.product(
+        hidden_layer_size, number_hidden_layers, learning_rate, momentum, batch_size, epochs)
+    # torch.use_deterministic_algorithms(True)
+    # torch.manual_seed(__SEED)
+    # Questa e` una grid search... se volessi fare una random?
+    for hidden_size, number_hidden, lr, m, size, epoch in hyperparams:
+        train_loader = DataLoader(
+            Dataset(X_train, Y_train), size, shuffle=True, drop_last=True)
+        mlp = NeuralNetwork(X_train.shape[1], hidden_size, len(
+            Y_train.unique()), number_hidden)
+        logging.info(mlp)
+        mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
+            mlp.parameters(), lr, m), epoch, train_loader)
     plt.plot(range(epochs), loss)
-    plot(["Epochs", "Loss"], "mlp_loss_progr")
+    plot(["Epochs", "Loss"], "mlp_loss_progr_batchnorm")
     # test_loader = DataLoader(Dataset(x_test, y_test),batch_size, shuffle=True, drop_last=True)
     # TODO: Test neural network
 
