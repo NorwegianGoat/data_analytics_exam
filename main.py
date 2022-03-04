@@ -220,8 +220,8 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series):
     number_hidden_layers = tune.grid_search([2, 4, 8, 16])
     learning_rate = tune.grid_search([0.001, 0.01])
     momentum = tune.grid_search([0.009, 0.09])
-    batch_size = tune.grid_search([8, 16, 32])
-    epochs = tune.grid_search([2, 4, 8])
+    batch_size = tune.grid_search([8, 16, 32, 64])
+    epochs = tune.grid_search([50, 100, 200, 400])
     configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
                "epochs": epochs}
