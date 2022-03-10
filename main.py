@@ -1,5 +1,4 @@
-import random
-import subprocess
+from joblib import dump, load
 import io
 from time import time
 from typing import Tuple
@@ -24,6 +23,7 @@ from torch.utils.data import DataLoader
 from ray import tune
 
 __DATA_PATH = './ml-25m'
+__DUMP_MODELS_PATH = './models'
 __IMG_PATH = os.path.join(os.path.realpath('.'), 'img')
 __SEED = 42
 __logging_level = logging.INFO
@@ -202,8 +202,8 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
 def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 1  # 10
-    cv = 2  # 5
+    n_iter = 10  # 10
+    cv = 5  # 5
     verbose = 3
     btm = {}  # best trained models
     # Naive Bayes
@@ -212,6 +212,7 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     y_pred = nb.predict(x_test)
     print("Naive Bayes f1 score %f" %
           f1_score(y_test, y_pred, average='micro'))
+    dump(nb, os.path.join(__DUMP_MODELS_PATH, 'naive_bayes.joblib'))
     btm['naive_bayes'] = nb
     # Random forest classifier
     rf_hyperparams = {"n_estimators": list(range(100, 350, 50)), 'criterion': ['gini', 'entropy'],
@@ -221,6 +222,8 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
                             cv=cv, scoring='f1_micro', n_iter=n_iter)
     rf.fit(X_train, Y_train)
     btm['random_forest'] = rf.best_estimator_
+    dump(rf.best_estimator_, os.path.join(
+        __DUMP_MODELS_PATH, 'random_forest.joblib'))
     logging.info("Random forest best params: " + str(rf.best_params_))
     print('Random forest f1 score: %f' % rf.best_score_)
     '''print("RF accuracy on training: ", rf.score(X_train, Y_train))
