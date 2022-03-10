@@ -1,3 +1,4 @@
+import random
 import subprocess
 import io
 from time import time
@@ -7,6 +8,7 @@ import numpy as np
 import os
 import logging
 import matplotlib.pyplot as plt
+from sklearn.base import BaseEstimator
 from sklearn.preprocessing import LabelEncoder
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
@@ -14,6 +16,8 @@ from imblearn.over_sampling import RandomOverSampler
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
+from sklearn.model_selection._search import GridSearchCV, RandomizedSearchCV
+from sklearn.metrics import f1_score
 from collections import OrderedDict
 import torch
 from torch.utils.data import DataLoader
@@ -71,7 +75,6 @@ class NeuralNetwork(torch.nn.Module):
         self.to(self.device)
 
     def forward(self, x):
-        # x = self.flatten(x)
         logits = self.linear_relu_stack(x)
         return logits
 
@@ -169,7 +172,7 @@ def dim_reduction(X_train, X_val, X_test):
     logging.info(
         "Dimensionality reduction. " + str(n_components*100) + "% of the variance will be mantained")
     logging.debug("Shape before dim. reduction" + str(X_train.shape))
-    pca = PCA(n_components, random_state=__SEED)
+    pca = PCA(n_components)
     pca.fit(X_train)
     X_train = pca.transform(X_train)
     X_val = pca.transform(X_val)
@@ -187,7 +190,7 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     plot(xy_labels, "bef_resample")
     count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
     logging.debug("Data before resampling: " + str(count))
-    ros = RandomOverSampler(random_state=__SEED)
+    ros = RandomOverSampler()
     X_train, y_train = ros.fit_resample(X_train, y_train)
     count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
     logging.debug("Data after the sampling" + str(count))
@@ -196,32 +199,47 @@ def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
     return X_train, y_train
 
 
-def train_models(X_train: pd.DataFrame, Y_train: pd.Series):
-    # TODO: Test standardized and normalized data
-    # TODO: Return hyperparams and best trained models
+def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
+    # Params for hyperparams tuner
+    n_jobs = os.cpu_count()-1
+    n_iter = 1  # 10
+    cv = 2  # 5
+    verbose = 3
+    btm = {}  # best trained models
     # Naive Bayes
     nb = GaussianNB()
     nb.fit(X_train, Y_train)
-    print("NB accuracy on training",
-          nb.score(X_train, Y_train))
+    y_pred = nb.predict(x_test)
+    print("Naive Bayes f1 score %f" %
+          f1_score(y_test, y_pred, average='micro'))
+    btm['naive_bayes'] = nb
     # Random forest classifier
-    rf = RandomForestClassifier(random_state=__SEED)
+    rf_hyperparams = {"n_estimators": list(range(100, 350, 50)), 'criterion': ['gini', 'entropy'],
+                      'max_depth': list(range(10, 30, 5))+[None], 'min_samples_split': list(range(2, 11, 2))}
+    estimator = RandomForestClassifier(n_jobs, random_state=__SEED)
+    rf = RandomizedSearchCV(estimator, rf_hyperparams, n_jobs=n_jobs, verbose=verbose,
+                            cv=cv, scoring='f1_micro', n_iter=n_iter)
     rf.fit(X_train, Y_train)
-    print("RF accuracy on training: ", rf.score(X_train, Y_train))
+    btm['random_forest'] = rf.best_estimator_
+    print('Random forest f1 score: %f' % rf.best_score_)
+    '''print("RF accuracy on training: ", rf.score(X_train, Y_train))
     # SVM
-    svc = SVC(kernel='rbf')
+    svc_hyperparams = {}
+    svc = SVC(kernel='linear')
     svc.fit(X_train, Y_train)
     print("SVC accuracy on training:", svc.score(X_train, Y_train))
     # MLP
     logging.info("This device has " +
                  _available_devices().type + " available.")
     # MLP hyperparams
-    hidden_layer_size = tune.grid_search([8, 16, 32, 64, 128, 256, 512])
-    number_hidden_layers = tune.grid_search([2, 4, 8, 16])
-    learning_rate = tune.grid_search([0.001, 0.01])
-    momentum = tune.grid_search([0.009, 0.09])
-    batch_size = tune.grid_search([8, 16, 32, 64])
-    epochs = tune.grid_search([50, 100, 200, 400])
+    tune_res = {'gpu': 1 if _available_devices().type != 'cpu' else 0}
+    hidden_layer_size = tune.sample_from(lambda _: 2**np.random.randint(3, 10))
+    number_hidden_layers = tune.sample_from(
+        lambda _: 2**np.random.randint(1, 6))
+    learning_rate = tune.loguniform(1e-3, 1e-1)
+    momentum = tune.loguniform(9e-3, 9e-2)
+    batch_size = tune.choice([8, 16, 32, 64])
+    epochs = tune.choice([50, 100, 200, 400])
     configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
                "epochs": epochs}
@@ -238,9 +256,9 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series):
         plt.plot(range(config['epochs']), loss)
         plot(["Epochs", "Loss"], "mlp_loss_progr")
     results = tune.run(train_nn, config=configs,
-                       local_dir=os.path.realpath("."), verbose=0)
+                       local_dir=os.path.realpath("."), verbose=3, num_samples=10, resources_per_trial=tune_res)
     logging.info("Best config nn is: " +
-                 str(results.get_best_config(metric="mean_loss", mode="min")))
+                 str(results.get_best_config(metric="mean_loss", mode="min")))'''
 
 
 def plot(axis_labels, fig_name):
@@ -253,6 +271,7 @@ def plot(axis_labels, fig_name):
 if __name__ == "__main__":
     t0 = time()
     logging.basicConfig(level=__logging_level)
+    np.random.seed(__SEED)
     # Load data
     df = load_data(__DATA_PATH)
     # Data pre-processing
@@ -260,15 +279,14 @@ if __name__ == "__main__":
     # Train, Validation, Test split
     logging.info("Splitting data in train, validation, test")
     X_train, X_test, y_train, y_test = train_test_split(
-        df.loc[:, df.columns != "rating"], df["rating"], test_size=0.2,
-        random_state=__SEED)
+        df.loc[:, df.columns != "rating"], df["rating"], test_size=0.2)
     X_train, X_val, y_train, y_val = train_test_split(
-        X_train, y_train, test_size=0.25, random_state=__SEED)
+        X_train, y_train, test_size=0.25)
     # Dimensionality reduction
     X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test)
     # Data resampling
     X_train, y_train = resample_data(X_train, y_train, encoder)
     # Models train
-    trained_models = train_models(X_train, y_train)
+    trained_models = train_models(X_train, y_train, X_val, y_val)
     # Models test
     logging.info("Elapsed time " + str(time()-t0) + "s")
