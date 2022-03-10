@@ -221,6 +221,7 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
                             cv=cv, scoring='f1_micro', n_iter=n_iter)
     rf.fit(X_train, Y_train)
     btm['random_forest'] = rf.best_estimator_
+    logging.info("Random forest best params: " + str(rf.best_params_))
     print('Random forest f1 score: %f' % rf.best_score_)
     '''print("RF accuracy on training: ", rf.score(X_train, Y_train))
     # SVM
