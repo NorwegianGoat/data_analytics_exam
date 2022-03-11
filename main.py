@@ -1,4 +1,5 @@
 from joblib import dump, load
+import argparse
 import io
 from time import time
 from typing import Tuple
@@ -7,8 +8,7 @@ import numpy as np
 import os
 import logging
 import matplotlib.pyplot as plt
-from sklearn.base import BaseEstimator
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
@@ -26,7 +26,7 @@ __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
 __IMG_PATH = os.path.join(os.path.realpath('.'), 'img')
 __SEED = 42
-__logging_level = logging.INFO
+__logging_level = logging.DEBUG
 
 
 def _available_devices() -> torch.device:
@@ -128,9 +128,6 @@ def load_data(path: str) -> pd.DataFrame:
     ratings = pd.read_csv(os.path.join(path, "ratings.csv"))
     genome_scores = pd.read_csv(os.path.join(path, "genome-scores.csv"))
     genome_tags = pd.read_csv(os.path.join(path, "genome-tags.csv"))
-    # Calc. avg. rating foreach movie
-    y = ratings.groupby("movieId")["rating"].mean()
-    movies = movies.merge(y, on="movieId")
     # One hot encoding for pipe separated genres
     genres = movies["genres"].str.get_dummies()
     movies = movies.merge(genres, on="movieId")
@@ -141,10 +138,19 @@ def load_data(path: str) -> pd.DataFrame:
     genome_scores = genome_scores.pivot(
         index="movieId", columns="tag", values="relevance")
     movies = movies.merge(genome_scores, on="movieId")
+    # Calc. avg. rating foreach movie
+    y = ratings.groupby("movieId")["rating"].mean()
+    movies = movies.merge(y, on="movieId")
+    # Print info on data
+    df_info = io.StringIO()
+    movies.info(show_counts=True, buf=df_info)
+    logging.debug(movies)
+    logging.debug(df_info.getvalue())
+    logging.info("NA values: " + str(movies.isna().sum().sum()))
     return movies
 
 
-def rating_discretization(ratings: pd.Series) -> Tuple[pd.Series, LabelEncoder]:
+def _rating_discretization(ratings: pd.Series) -> Tuple[pd.Series, LabelEncoder]:
     bins = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
     binned_ratings = pd.cut(
         ratings, bins=bins, labels=bins[1:])
@@ -154,17 +160,18 @@ def rating_discretization(ratings: pd.Series) -> Tuple[pd.Series, LabelEncoder]:
     return binned_ratings, label_encoder
 
 
-def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, LabelEncoder]:
-    # Avg rating discretization
-    logging.info("Discretizing data in categories")
-    bins, encoder = rating_discretization(df["rating"])
-    df["rating"] = bins
-    df_info = io.StringIO()
-    df.info(show_counts=True, buf=df_info)
+def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, StandardScaler]:
+    # Avg rating discretization (binning)
+    logging.info("Discretizing ratings")
+    bins, encoder = _rating_discretization(df['rating'])
+    df['rating'] = bins
+    logging.debug(df.head)
+    # Standardization
+    logging.info("Scaling data")
+    scaler = StandardScaler(copy=False)
+    df = scaler.fit_transform(df.to_numpy())
     logging.debug(df)
-    logging.debug(df_info.getvalue())
-    logging.info("NA values: " + str(df.isna().sum().sum()))
-    return df, encoder
+    return df, encoder, scaler
 
 
 def dim_reduction(X_train, X_val, X_test):
@@ -183,30 +190,30 @@ def dim_reduction(X_train, X_val, X_test):
     return X_train, X_val, X_test
 
 
-def resample_data(X_train, y_train, encoder) -> Tuple[pd.DataFrame, pd.Series]:
+def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     logging.info("Resampling data")
-    plt.hist(encoder.inverse_transform(y_train), bins="auto")
+    plt.hist(y_train, bins="auto")
     xy_labels = ["Class", "Freq."]
     plot(xy_labels, "bef_resample")
-    count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
+    count = np.unique(y_train, return_counts=True)
     logging.debug("Data before resampling: " + str(count))
     ros = RandomOverSampler()
     X_train, y_train = ros.fit_resample(X_train, y_train)
-    count = np.unique(encoder.inverse_transform(y_train), return_counts=True)
+    count = np.unique(y_train, return_counts=True)
     logging.debug("Data after the sampling" + str(count))
-    plt.hist(encoder.inverse_transform(y_train), bins="auto")
+    plt.hist(y_train, bins="auto")
     plot(xy_labels, "aft_resample")
     return X_train, y_train
 
 
-def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame, y_test):
+def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y_test):
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 10  # 10
-    cv = 5  # 5
+    n_iter = 1  # 10
+    cv = 2  # 5
     verbose = 3
     btm = {}  # best trained models
-    '''# Naive Bayes
+    # Naive Bayes
     nb = GaussianNB()
     nb.fit(X_train, Y_train)
     y_pred = nb.predict(x_test)
@@ -225,10 +232,11 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     dump(rf.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'random_forest.joblib'))
     logging.info("Random forest best params: " + str(rf.best_params_))
-    print('Random forest f1 score: %f' % rf.best_score_)'''
+    print('Random forest f1 score: %f' % rf.best_score_)
     # SVM
-    hyperparams = {'kernel': ['linear', 'rbf',
-                              'poly', 'sigmoid'], 'degree': list(range(2, 5))}
+    hyperparams = {'kernel': ['linear', 'rbf', 'poly', 'sigmoid'],
+                   'degree': list(range(2, 5)), 'tol': np.linspace(1e-3, 1e-5, 5),
+                   'C': np.linspace(1, 5, 5)}
     estimator = SVC()
     svc = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs,
                              verbose=verbose, cv=cv, scoring='f1_micro', n_iter=n_iter)
@@ -285,17 +293,17 @@ if __name__ == "__main__":
     # Load data
     df = load_data(__DATA_PATH)
     # Data pre-processing
-    df, encoder = preprocess_data(df)
+    df = preprocess_data(df)
     # Train, Validation, Test split
     logging.info("Splitting data in train, validation, test")
     X_train, X_test, y_train, y_test = train_test_split(
-        df.loc[:, df.columns != "rating"], df["rating"], test_size=0.2)
+        df[:, :-1], df[:, -1], test_size=0.2)
     X_train, X_val, y_train, y_val = train_test_split(
         X_train, y_train, test_size=0.25)
     # Dimensionality reduction
     X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test)
     # Data resampling
-    X_train, y_train = resample_data(X_train, y_train, encoder)
+    X_train, y_train = resample_data(X_train, y_train)
     # Models train
     trained_models = train_models(X_train, y_train, X_val, y_val)
     # Models test
