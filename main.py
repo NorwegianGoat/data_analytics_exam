@@ -170,6 +170,7 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, Standar
     logger.info("Scaling data")
     scaler = StandardScaler(copy=False)
     df = scaler.fit_transform(df.to_numpy())
+    df[:, -1] = bins
     logger.debug(df)
     return df, encoder, scaler
 
@@ -209,8 +210,8 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
 def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y_test):
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 1  # 10
-    cv = 2  # 5
+    n_iter = 10  # 10
+    cv = 5  # 5
     verbose = 3
     btm = {}  # best trained models
     # Naive Bayes
@@ -246,9 +247,9 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
     logger.info("Support vector best params: " + str(svc.best_params_))
     print("Support vector f1 score: %f" % svc.best_score_)
-    '''# MLP
+    # MLP
     logger.info("This device has " +
-                 _available_devices().type + " available.")
+                _available_devices().type + " available.")
     # MLP hyperparams
     tune_res = {'gpu': 1 if _available_devices().type != 'cpu' else 0}
     hidden_layer_size = tune.sample_from(lambda _: 2**np.random.randint(3, 10))
@@ -274,9 +275,9 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
         plt.plot(range(config['epochs']), loss)
         plot(["Epochs", "Loss"], "mlp_loss_progr")
     results = tune.run(train_nn, config=configs,
-                       local_dir=os.path.realpath("."), verbose=3, num_samples=10, resources_per_trial=tune_res)
+                       local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
     logger.info("Best config nn is: " +
-                 str(results.get_best_config(metric="mean_loss", mode="min")))'''
+                str(results.get_best_config(metric="mean_loss", mode="min")))
 
 
 def plot(axis_labels, fig_name):
