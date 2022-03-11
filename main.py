@@ -160,7 +160,7 @@ def _rating_discretization(ratings: pd.Series) -> Tuple[pd.Series, LabelEncoder]
     return binned_ratings, label_encoder
 
 
-def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, StandardScaler]:
+def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, Normalizer]:
     # Avg rating discretization (binning)
     logger.info("Discretizing ratings")
     bins, encoder = _rating_discretization(df['rating'])
@@ -199,7 +199,7 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data before resampling: " + str(count))
     # oversampler = RandomOverSampler()
-    oversampler = SMOTE()
+    oversampler = SMOTE(k_neighbors=3)  # 5,6,7,8,4
     X_train, y_train = oversampler.fit_resample(X_train, y_train)
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data after the sampling" + str(count))
@@ -213,7 +213,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     n_jobs = os.cpu_count()-1
     n_iter = 10  # 10
     cv = 5  # 5
-    verbose = 3
+    verbose = 0
     btm = {}  # best trained models
     # Naive Bayes
     nb = GaussianNB()
