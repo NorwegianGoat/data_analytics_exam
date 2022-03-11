@@ -206,7 +206,7 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     cv = 5  # 5
     verbose = 3
     btm = {}  # best trained models
-    # Naive Bayes
+    '''# Naive Bayes
     nb = GaussianNB()
     nb.fit(X_train, Y_train)
     y_pred = nb.predict(x_test)
@@ -215,24 +215,30 @@ def train_models(X_train: pd.DataFrame, Y_train: pd.Series, x_test: pd.DataFrame
     dump(nb, os.path.join(__DUMP_MODELS_PATH, 'naive_bayes.joblib'))
     btm['naive_bayes'] = nb
     # Random forest classifier
-    rf_hyperparams = {"n_estimators": list(range(100, 350, 50)), 'criterion': ['gini', 'entropy'],
-                      'max_depth': list(range(10, 30, 5))+[None], 'min_samples_split': list(range(2, 11, 2))}
+    hyperparams = {"n_estimators": list(range(100, 350, 50)), 'criterion': ['gini', 'entropy'],
+                   'max_depth': list(range(10, 30, 5))+[None], 'min_samples_split': list(range(2, 11, 2))}
     estimator = RandomForestClassifier(n_jobs, random_state=__SEED)
-    rf = RandomizedSearchCV(estimator, rf_hyperparams, n_jobs=n_jobs, verbose=verbose,
+    rf = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs, verbose=verbose,
                             cv=cv, scoring='f1_micro', n_iter=n_iter)
     rf.fit(X_train, Y_train)
     btm['random_forest'] = rf.best_estimator_
     dump(rf.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'random_forest.joblib'))
     logging.info("Random forest best params: " + str(rf.best_params_))
-    print('Random forest f1 score: %f' % rf.best_score_)
-    '''print("RF accuracy on training: ", rf.score(X_train, Y_train))
+    print('Random forest f1 score: %f' % rf.best_score_)'''
     # SVM
-    svc_hyperparams = {}
-    svc = SVC(kernel='linear')
+    hyperparams = {'kernel': ['linear', 'rbf',
+                              'poly', 'sigmoid'], 'degree': list(range(2, 5))}
+    estimator = SVC()
+    svc = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs,
+                             verbose=verbose, cv=cv, scoring='f1_micro', n_iter=n_iter)
     svc.fit(X_train, Y_train)
-    print("SVC accuracy on training:", svc.score(X_train, Y_train))
-    # MLP
+    btm['support_vector'] = svc.best_estimator_
+    dump(svc.best_estimator_, os.path.join(
+        __DUMP_MODELS_PATH, 'support_vector.joblib'))
+    logging.info("Support vector best params: " + str(svc.best_params_))
+    print("Support vector f1 score: %f" % svc.best_score_)
+    '''# MLP
     logging.info("This device has " +
                  _available_devices().type + " available.")
     # MLP hyperparams
