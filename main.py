@@ -8,7 +8,7 @@ import numpy as np
 import os
 import logging
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import LabelEncoder, StandardScaler, Normalizer
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
@@ -62,12 +62,12 @@ class NeuralNetwork(torch.nn.Module):
         layers = OrderedDict()
         layers[str(len(layers))] = torch.nn.Linear(
             input_layer_size, hidden_layer_size)
-        # layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
+        layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
         layers[str(len(layers))] = self.activation_function
         for i in range(0, number_hidden_layers):
             layers[str(len(layers))] = torch.nn.Linear(
                 hidden_layer_size, hidden_layer_size)
-            # layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
+            layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
             layers[str(len(layers))] = self.activation_function
         layers[str(len(layers))] = torch.nn.Linear(
             hidden_layer_size, output_layer_size)
@@ -166,9 +166,9 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, Standar
     bins, encoder = _rating_discretization(df['rating'])
     df['rating'] = bins
     logger.debug(df.head)
-    # Standardization
+    # Scaling data
     logger.info("Scaling data")
-    scaler = StandardScaler(copy=False)
+    scaler = Normalizer(copy=False)
     df = scaler.fit_transform(df.to_numpy())
     df[:, -1] = bins
     logger.debug(df)
@@ -247,7 +247,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
     logger.info("Support vector best params: " + str(svc.best_params_))
     print("Support vector f1 score: %f" % svc.best_score_)
-    # MLP
+    '''# MLP
     logger.info("This device has " +
                 _available_devices().type + " available.")
     # MLP hyperparams
@@ -277,7 +277,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     results = tune.run(train_nn, config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
     logger.info("Best config nn is: " +
-                str(results.get_best_config(metric="mean_loss", mode="min")))
+                str(results.get_best_config(metric="mean_loss", mode="min")))'''
 
 
 def plot(axis_labels, fig_name):
