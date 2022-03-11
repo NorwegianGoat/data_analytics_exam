@@ -99,8 +99,8 @@ class NeuralNetwork(torch.nn.Module):
                 loss.backward()
                 optimizer.step()
             loss = np.mean(epoch_loss)
-            logging.info("Epoch: " + str(epoch) + " avg. loss: " +
-                         str(loss))
+            logger.info("Epoch: " + str(epoch) + " avg. loss: " +
+                        str(loss))
             loss_over_epochs.append(loss)
         # Returns the trained neural net and the loss over the training
         return self, loss_over_epochs
@@ -109,7 +109,7 @@ class NeuralNetwork(torch.nn.Module):
         # Puts the nn in test mode, no dropout, etc.
         self.eval()
         y_pred = self.forward(X_val)
-        logging.info(y_pred)
+        logger.info(y_pred)
         y_pred = y_pred.argmax()
 
     def __str__(self) -> str:
@@ -122,7 +122,7 @@ class NeuralNetwork(torch.nn.Module):
 
 
 def load_data(path: str) -> pd.DataFrame:
-    logging.info("Loading data from " + path)
+    logger.info("Loading data from " + path)
     movies = pd.read_csv(os.path.join(
         path, "movies.csv"), index_col="movieId", usecols=["movieId", "genres"])
     ratings = pd.read_csv(os.path.join(path, "ratings.csv"))
@@ -144,9 +144,9 @@ def load_data(path: str) -> pd.DataFrame:
     # Print info on data
     df_info = io.StringIO()
     movies.info(show_counts=True, buf=df_info)
-    logging.debug(movies)
-    logging.debug(df_info.getvalue())
-    logging.info("NA values: " + str(movies.isna().sum().sum()))
+    logger.debug(movies)
+    logger.debug(df_info.getvalue())
+    logger.info("NA values: " + str(movies.isna().sum().sum()))
     return movies
 
 
@@ -162,23 +162,23 @@ def _rating_discretization(ratings: pd.Series) -> Tuple[pd.Series, LabelEncoder]
 
 def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, StandardScaler]:
     # Avg rating discretization (binning)
-    logging.info("Discretizing ratings")
+    logger.info("Discretizing ratings")
     bins, encoder = _rating_discretization(df['rating'])
     df['rating'] = bins
-    logging.debug(df.head)
+    logger.debug(df.head)
     # Standardization
-    logging.info("Scaling data")
+    logger.info("Scaling data")
     scaler = StandardScaler(copy=False)
     df = scaler.fit_transform(df.to_numpy())
-    logging.debug(df)
+    logger.debug(df)
     return df, encoder, scaler
 
 
 def dim_reduction(X_train, X_val, X_test):
     n_components = 0.8
-    logging.info(
+    logger.info(
         "Dimensionality reduction. " + str(n_components*100) + "% of the variance will be mantained")
-    logging.debug("Shape before dim. reduction" + str(X_train.shape))
+    logger.debug("Shape before dim. reduction" + str(X_train.shape))
     pca = PCA(n_components)
     pca.fit(X_train)
     X_train = pca.transform(X_train)
@@ -186,21 +186,21 @@ def dim_reduction(X_train, X_val, X_test):
     X_test = pca.transform(X_test)
     # plt.plot(pca.explained_variance_ratio_)
     # plot(["Eigenvector", "Explained var."], "pca_variance")
-    logging.debug("Shape after dim. reduction" + str(X_train.shape))
+    logger.debug("Shape after dim. reduction" + str(X_train.shape))
     return X_train, X_val, X_test
 
 
 def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
-    logging.info("Resampling data")
+    logger.info("Resampling data")
     plt.hist(y_train, bins="auto")
     xy_labels = ["Class", "Freq."]
     plot(xy_labels, "bef_resample")
     count = np.unique(y_train, return_counts=True)
-    logging.debug("Data before resampling: " + str(count))
+    logger.debug("Data before resampling: " + str(count))
     ros = RandomOverSampler()
     X_train, y_train = ros.fit_resample(X_train, y_train)
     count = np.unique(y_train, return_counts=True)
-    logging.debug("Data after the sampling" + str(count))
+    logger.debug("Data after the sampling" + str(count))
     plt.hist(y_train, bins="auto")
     plot(xy_labels, "aft_resample")
     return X_train, y_train
@@ -231,7 +231,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     btm['random_forest'] = rf.best_estimator_
     dump(rf.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'random_forest.joblib'))
-    logging.info("Random forest best params: " + str(rf.best_params_))
+    logger.info("Random forest best params: " + str(rf.best_params_))
     print('Random forest f1 score: %f' % rf.best_score_)
     # SVM
     hyperparams = {'kernel': ['linear', 'rbf', 'poly', 'sigmoid'],
@@ -244,10 +244,10 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     btm['support_vector'] = svc.best_estimator_
     dump(svc.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
-    logging.info("Support vector best params: " + str(svc.best_params_))
+    logger.info("Support vector best params: " + str(svc.best_params_))
     print("Support vector f1 score: %f" % svc.best_score_)
     '''# MLP
-    logging.info("This device has " +
+    logger.info("This device has " +
                  _available_devices().type + " available.")
     # MLP hyperparams
     tune_res = {'gpu': 1 if _available_devices().type != 'cpu' else 0}
@@ -267,7 +267,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
             Dataset(X_train, Y_train), config['batch_size'], shuffle=True, drop_last=True)
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], len(
             Y_train.unique()), config['number_hidden_layers'])
-        logging.info(mlp)
+        logger.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
             mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
         tune.report(mean_loss=loss[-1])
@@ -275,7 +275,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
         plot(["Epochs", "Loss"], "mlp_loss_progr")
     results = tune.run(train_nn, config=configs,
                        local_dir=os.path.realpath("."), verbose=3, num_samples=10, resources_per_trial=tune_res)
-    logging.info("Best config nn is: " +
+    logger.info("Best config nn is: " +
                  str(results.get_best_config(metric="mean_loss", mode="min")))'''
 
 
@@ -288,14 +288,16 @@ def plot(axis_labels, fig_name):
 
 if __name__ == "__main__":
     t0 = time()
-    logging.basicConfig(level=__logging_level)
+    logging.basicConfig()
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level=__logging_level)
     np.random.seed(__SEED)
     # Load data
     df = load_data(__DATA_PATH)
     # Data pre-processing
-    df = preprocess_data(df)
+    df, encoder, scaler = preprocess_data(df)
     # Train, Validation, Test split
-    logging.info("Splitting data in train, validation, test")
+    logger.info("Splitting data in train, validation, test")
     X_train, X_test, y_train, y_test = train_test_split(
         df[:, :-1], df[:, -1], test_size=0.2)
     X_train, X_val, y_train, y_val = train_test_split(
@@ -307,4 +309,4 @@ if __name__ == "__main__":
     # Models train
     trained_models = train_models(X_train, y_train, X_val, y_val)
     # Models test
-    logging.info("Elapsed time " + str(time()-t0) + "s")
+    logger.info("Elapsed time " + str(time()-t0) + "s")
