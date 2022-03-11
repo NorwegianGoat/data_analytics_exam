@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import RandomOverSampler
+from imblearn.over_sampling import RandomOverSampler, SMOTE
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -26,7 +26,7 @@ __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
 __IMG_PATH = os.path.join(os.path.realpath('.'), 'img')
 __SEED = 42
-__logging_level = logging.DEBUG
+__logging_level = logging.INFO
 
 
 def _available_devices() -> torch.device:
@@ -198,8 +198,9 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     plot(xy_labels, "bef_resample")
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data before resampling: " + str(count))
-    ros = RandomOverSampler()
-    X_train, y_train = ros.fit_resample(X_train, y_train)
+    # oversampler = RandomOverSampler()
+    oversampler = SMOTE()
+    X_train, y_train = oversampler.fit_resample(X_train, y_train)
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data after the sampling" + str(count))
     plt.hist(y_train, bins="auto")
