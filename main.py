@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import RandomOverSampler, SMOTE
+from imblearn.over_sampling import RandomOverSampler, SMOTE, BorderlineSMOTE, ADASYN
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -168,7 +168,8 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, Normali
     logger.debug(df.head)
     # Scaling data
     logger.info("Scaling data")
-    scaler = Normalizer(copy=False)
+    scaler = Normalizer(copy=False, norm='l2')
+    # scaler = StandardScaler(copy=False)
     df = scaler.fit_transform(df.to_numpy())
     df[:, -1] = bins
     logger.debug(df)
@@ -199,7 +200,8 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data before resampling: " + str(count))
     # oversampler = RandomOverSampler()
-    oversampler = SMOTE(k_neighbors=3)  # 5,6,7,8,4
+    oversampler = SMOTE(k_neighbors=6)  # 5,6,7,8,4
+    # oversampler = BorderlineSMOTE()
     X_train, y_train = oversampler.fit_resample(X_train, y_train)
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data after the sampling" + str(count))
@@ -211,9 +213,9 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
 def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y_test):
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 10  # 10
-    cv = 5  # 5
-    verbose = 0
+    n_iter = 5  # 10
+    cv = 2  # 5
+    verbose = 1
     btm = {}  # best trained models
     # Naive Bayes
     nb = GaussianNB()
@@ -248,7 +250,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
     logger.info("Support vector best params: " + str(svc.best_params_))
     print("Support vector f1 score: %f" % svc.best_score_)
-    '''# MLP
+    # MLP
     logger.info("This device has " +
                 _available_devices().type + " available.")
     # MLP hyperparams
@@ -278,7 +280,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     results = tune.run(train_nn, config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
     logger.info("Best config nn is: " +
-                str(results.get_best_config(metric="mean_loss", mode="min")))'''
+                str(results.get_best_config(metric="mean_loss", mode="min")))
 
 
 def plot(axis_labels, fig_name):
