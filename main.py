@@ -1,8 +1,9 @@
+from zlib import Z_BEST_COMPRESSION
 from joblib import dump, load
 import argparse
 import io
 from time import time
-from typing import Tuple
+from typing import Dict, Tuple
 import pandas as pd
 import numpy as np
 import os
@@ -11,12 +12,13 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import RandomOverSampler, SMOTE
+from imblearn.over_sampling import RandomOverSampler, SMOTE, BorderlineSMOTE, ADASYN
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.model_selection._search import GridSearchCV, RandomizedSearchCV
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
+from sklearn.base import BaseEstimator
 from collections import OrderedDict
 import torch
 from torch.utils.data import DataLoader
@@ -176,7 +178,8 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, Normali
     logger.debug(df.head)
     # Scaling data
     logger.info("Scaling data")
-    scaler = Normalizer(copy=False)
+    scaler = Normalizer(copy=False, norm='l2')
+    # scaler = StandardScaler(copy=False)
     df = scaler.fit_transform(df.to_numpy())
     df[:, -1] = bins
     logger.debug(df)
@@ -207,7 +210,8 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data before resampling: " + str(count))
     # oversampler = RandomOverSampler()
-    oversampler = SMOTE(k_neighbors=3)  # 5,6,7,8,4
+    oversampler = SMOTE(k_neighbors=6)  # 5,6,7,8,4
+    # oversampler = BorderlineSMOTE()
     X_train, y_train = oversampler.fit_resample(X_train, y_train)
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data after the sampling" + str(count))
@@ -221,14 +225,14 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     n_jobs = os.cpu_count()-1
     n_iter = 10  # 10
     cv = 5  # 5
-    verbose = 0
+    verbose = 1
     btm = {}  # best trained models
     # Naive Bayes
     nb = GaussianNB()
     nb.fit(X_train, Y_train)
     y_pred = nb.predict(x_test)
-    print("Naive Bayes f1 score %f" %
-          f1_score(y_test, y_pred, average='micro'))
+    print("Naive Bayes accuracy score %f" %
+          accuracy_score(y_test, y_pred))
     dump(nb, os.path.join(__DUMP_MODELS_PATH, 'naive_bayes.joblib'))
     btm['naive_bayes'] = nb
     # Random forest classifier
@@ -236,26 +240,26 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
                    'max_depth': list(range(10, 30, 5))+[None], 'min_samples_split': list(range(2, 11, 2))}
     estimator = RandomForestClassifier(n_jobs, random_state=__SEED)
     rf = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs, verbose=verbose,
-                            cv=cv, scoring='f1_micro', n_iter=n_iter)
+                            cv=cv, scoring='accuracy', n_iter=n_iter)
     rf.fit(X_train, Y_train)
     btm['random_forest'] = rf.best_estimator_
     dump(rf.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'random_forest.joblib'))
     logger.info("Random forest best params: " + str(rf.best_params_))
-    print('Random forest f1 score: %f' % rf.best_score_)
+    print('Random forest accuracy score: %f' % rf.best_score_)
     # SVM
     hyperparams = {'kernel': ['linear', 'rbf', 'poly', 'sigmoid'],
                    'degree': list(range(2, 5)), 'tol': np.linspace(1e-3, 1e-5, 5),
                    'C': np.linspace(1, 5, 5)}
     estimator = SVC()
     svc = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs,
-                             verbose=verbose, cv=cv, scoring='f1_micro', n_iter=n_iter)
+                             verbose=verbose, cv=cv, scoring='accuracy', n_iter=n_iter)
     svc.fit(X_train, Y_train)
     btm['support_vector'] = svc.best_estimator_
     dump(svc.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
     logger.info("Support vector best params: " + str(svc.best_params_))
-    print("Support vector f1 score: %f" % svc.best_score_)
+    print("Support vector accuracy score: %f" % svc.best_score_)
     '''# MLP
     logger.info("This device has " +
                 _available_devices().type + " available.")
@@ -287,6 +291,22 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
                        local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
     logger.info("Best config nn is: " +
                 str(results.get_best_config(metric="mean_loss", mode="min")))'''
+    return btm
+
+
+def test_models(models: Dict[str, BaseEstimator], X_test, Y_test):
+    for key, model in models.items():
+        y_pred = model.predict(X_test)
+        average = "macro"
+        zero_div = 0
+        precision = precision_score(
+            Y_test, y_pred, average=average, zero_division=zero_div)
+        recall = recall_score(
+            Y_test, y_pred, average=average, zero_division=zero_div)
+        f1 = f1_score(Y_test, y_pred, average=average, zero_division=zero_div)
+        accuracy = accuracy_score(Y_test, y_pred)
+        logger.info(key + " Precision: %f. Recall: %f. f1: %f. Accuracy: %f." %
+                    (precision, recall, f1, accuracy))
 
 
 def plot(axis_labels, fig_name):
@@ -318,5 +338,6 @@ if __name__ == "__main__":
     X_train, y_train = resample_data(X_train, y_train)
     # Models train
     trained_models = train_models(X_train, y_train, X_val, y_val)
+    test_models(trained_models, X_test, y_test)
     # Models test
     logger.info("Elapsed time " + str(time()-t0) + "s")
