@@ -26,7 +26,7 @@ __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
 __IMG_PATH = os.path.join(os.path.realpath('.'), 'img')
 __SEED = 42
-__logging_level = logging.INFO
+__logging_level = logging.DEBUG
 
 
 def _available_devices() -> torch.device:
@@ -146,7 +146,15 @@ def load_data(path: str) -> pd.DataFrame:
     movies.info(show_counts=True, buf=df_info)
     logger.debug(movies)
     logger.debug(df_info.getvalue())
-    logger.info("NA values: " + str(movies.isna().sum().sum()))
+    logger.info("NA values:%i." % str(movies.isna().sum().sum()))
+    # Check data integrity
+    df_info = movies.describe().loc[["min", "max"], :]
+    condition0 = df_info < 0
+    logger.info("Values under 0: %i." % condition0.sum().sum())
+    condition1 = df_info.loc[:, df_info.columns != "rating"] > 1
+    logger.info("Characteristics over 1: %i" % condition1.sum().sum())
+    condition2 = df_info.loc[:, df_info.columns == "rating"] > 5
+    logger.info("Ratings over 5: %i." % condition2.sum().sum())
     return movies
 
 
