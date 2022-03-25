@@ -339,7 +339,7 @@ if __name__ == "__main__":
     # Dimensionality reduction
     X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test, y_train)
     plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train)
-    plot(["x0", "x1"], "scatterplot_data")
+    plot(["x0", "x1"], "lda_scatterplot_data")
     # Data resampling
     X_train, y_train = resample_data(X_train, y_train)
     # Models train
