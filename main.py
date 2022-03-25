@@ -29,7 +29,7 @@ __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
 __IMG_PATH = os.path.join(os.path.realpath('.'), 'img')
 __SEED = 42
-__logging_level = logging.DEBUG
+__logging_level = logging.INFO
 
 
 def _available_devices() -> torch.device:
@@ -226,8 +226,8 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 10  # 10
-    cv = 5  # 5
+    n_iter = 1  # 10
+    cv = 2  # 5
     verbose = 1
     btm = {}  # best trained models
     # Naive Bayes
@@ -338,6 +338,8 @@ if __name__ == "__main__":
         X_train, y_train, test_size=0.25)
     # Dimensionality reduction
     X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test, y_train)
+    plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train)
+    plot(["x0", "x1"], "scatterplot_data")
     # Data resampling
     X_train, y_train = resample_data(X_train, y_train)
     # Models train
