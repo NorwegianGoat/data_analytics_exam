@@ -9,6 +9,7 @@ import numpy as np
 import os
 import logging
 import matplotlib.pyplot as plt
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
@@ -180,22 +181,24 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, Normali
     logger.info("Scaling data")
     scaler = Normalizer(copy=False, norm='l2')
     # scaler = StandardScaler(copy=False)
+    # scaler = MinMaxScaler(copy=False)
     df = scaler.fit_transform(df.to_numpy())
     df[:, -1] = bins
     logger.debug(df)
     return df, encoder, scaler
 
 
-def dim_reduction(X_train, X_val, X_test):
+def dim_reduction(X_train, X_val, X_test, y_train):
     n_components = 0.8
     logger.info(
         "Dimensionality reduction. " + str(n_components*100) + "% of the variance will be mantained")
     logger.debug("Shape before dim. reduction" + str(X_train.shape))
-    pca = PCA(n_components)
-    pca.fit(X_train)
-    X_train = pca.transform(X_train)
-    X_val = pca.transform(X_val)
-    X_test = pca.transform(X_test)
+    projector = PCA(n_components)
+    # projector = LinearDiscriminantAnalysis()
+    projector.fit(X_train, y_train)  # y_train is automatically ignored in LDA
+    X_train = projector.transform(X_train)
+    X_val = projector.transform(X_val)
+    X_test = projector.transform(X_test)
     # plt.plot(pca.explained_variance_ratio_)
     # plot(["Eigenvector", "Explained var."], "pca_variance")
     logger.debug("Shape after dim. reduction" + str(X_train.shape))
@@ -333,7 +336,7 @@ if __name__ == "__main__":
     X_train, X_val, y_train, y_val = train_test_split(
         X_train, y_train, test_size=0.25)
     # Dimensionality reduction
-    X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test)
+    X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test, y_train)
     # Data resampling
     X_train, y_train = resample_data(X_train, y_train)
     # Models train
