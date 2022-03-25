@@ -197,8 +197,8 @@ def dim_reduction(X_train, X_val, X_test, y_train):
     X_train = projector.transform(X_train)
     X_val = projector.transform(X_val)
     X_test = projector.transform(X_test)
-    # plt.plot(pca.explained_variance_ratio_)
-    # plot(["Eigenvector", "Explained var."], "pca_variance")
+    # plt.plot(projector.explained_variance_ratio_)
+    #plot(["Dimension", "Explained var."], "lda_variance")
     logger.debug("Shape after dim. reduction" + str(X_train.shape))
     logger.debug(X_train)
     return X_train, X_val, X_test
@@ -226,8 +226,8 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 1  # 10
-    cv = 2  # 5
+    n_iter = 10  # 10
+    cv = 5  # 5
     verbose = 1
     btm = {}  # best trained models
     # Naive Bayes
