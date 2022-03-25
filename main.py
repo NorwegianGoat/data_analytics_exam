@@ -189,12 +189,10 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[np.ndarray, LabelEncoder, Normali
 
 
 def dim_reduction(X_train, X_val, X_test, y_train):
-    n_components = 0.8
-    logger.info(
-        "Dimensionality reduction. " + str(n_components*100) + "% of the variance will be mantained")
     logger.debug("Shape before dim. reduction" + str(X_train.shape))
-    projector = PCA(n_components)
-    # projector = LinearDiscriminantAnalysis()
+    # n_components = 0.8
+    # projector = PCA(n_components)
+    projector = LinearDiscriminantAnalysis()
     projector.fit(X_train, y_train)  # y_train is automatically ignored in LDA
     X_train = projector.transform(X_train)
     X_val = projector.transform(X_val)
@@ -202,6 +200,7 @@ def dim_reduction(X_train, X_val, X_test, y_train):
     # plt.plot(pca.explained_variance_ratio_)
     # plot(["Eigenvector", "Explained var."], "pca_variance")
     logger.debug("Shape after dim. reduction" + str(X_train.shape))
+    logger.debug(X_train)
     return X_train, X_val, X_test
 
 
@@ -224,10 +223,11 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y_test):
+    logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 10  # 10
-    cv = 5  # 5
+    n_iter = 1  # 10
+    cv = 2  # 5
     verbose = 1
     btm = {}  # best trained models
     # Naive Bayes
@@ -298,6 +298,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
 
 
 def test_models(models: Dict[str, BaseEstimator], X_test, Y_test):
+    logger.info("Testing models")
     for key, model in models.items():
         y_pred = model.predict(X_test)
         average = "macro"
