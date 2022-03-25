@@ -206,7 +206,7 @@ def dim_reduction(X_train, X_val, X_test, y_train):
 
 def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     logger.info("Resampling data")
-    plt.hist(y_train, bins="auto")
+    plt.hist(encoder.inverse_transform(y_train.astype(int)), bins="auto")
     xy_labels = ["Class", "Freq."]
     plot(xy_labels, "bef_resample")
     count = np.unique(y_train, return_counts=True)
@@ -217,7 +217,7 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     X_train, y_train = oversampler.fit_resample(X_train, y_train)
     count = np.unique(y_train, return_counts=True)
     logger.debug("Data after the sampling" + str(count))
-    plt.hist(y_train, bins="auto")
+    plt.hist(encoder.inverse_transform(y_train.astype(int)), bins="auto")
     plot(xy_labels, "aft_resample")
     return X_train, y_train
 
