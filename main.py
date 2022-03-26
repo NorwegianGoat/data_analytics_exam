@@ -1,4 +1,3 @@
-from zlib import Z_BEST_COMPRESSION
 from joblib import dump, load
 import argparse
 import io
@@ -18,12 +17,13 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.model_selection._search import GridSearchCV, RandomizedSearchCV
-from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.base import BaseEstimator
 from collections import OrderedDict
 import torch
 from torch.utils.data import DataLoader
 from ray import tune
+import seaborn as sn
 
 __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
@@ -311,6 +311,12 @@ def test_models(models: Dict[str, BaseEstimator], X_test, Y_test):
         accuracy = accuracy_score(Y_test, y_pred)
         logger.info(key + " Precision: %f. Recall: %f. f1: %f. Accuracy: %f." %
                     (precision, recall, f1, accuracy))
+        # Plot confusion
+        cm = confusion_matrix(Y_test, y_pred, labels=encoder.classes_)
+        conf_plot = ConfusionMatrixDisplay(
+            confusion_matrix=cm, display_labels=encoder.classes_)
+        conf_plot.plot()
+        plot([None, None], key+"_confusion_matrix")
 
 
 def plot(axis_labels, fig_name):
