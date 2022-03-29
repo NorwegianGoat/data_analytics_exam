@@ -84,7 +84,7 @@ class NeuralNetwork(torch.nn.Module):
 
     def _train(self, criterion, optimizer, epochs, data: DataLoader):
         self.train()
-        loss_over_epochs = []
+        epoch_loss = []
         for epoch in range(epochs):
             # Minibatch, we iterate over data passed by data loader for each epoch
             epoch_loss = []
@@ -102,12 +102,10 @@ class NeuralNetwork(torch.nn.Module):
                 epoch_loss.append(loss.item())
                 loss.backward()
                 optimizer.step()
-            loss = np.mean(epoch_loss)
             logger.info("Epoch: " + str(epoch) + " avg. loss: " +
                         str(loss))
-            loss_over_epochs.append(loss)
         # Returns the trained neural net and the loss over the training
-        return self, loss_over_epochs
+        return self, epoch_loss
 
     def _test(self, X_val, Y_val):
         # Puts the nn in test mode, no dropout, etc.
@@ -281,13 +279,13 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     dropout_prob = tune.loguniform(0.05, 0.3)
     configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
-               "epochs": epochs, "droput_prob": dropout_prob}
+               "epochs": epochs, "dropout_prob": dropout_prob}
 
     def train_nn(config: dict):
         train_loader = DataLoader(
             Dataset(X_train, Y_train), config['batch_size'], shuffle=True, drop_last=True)
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], len(
-            Y_train.unique()), config['number_hidden_layers'], config['dropout_prob'])
+            np.unique(Y_train)), config['number_hidden_layers'], config['dropout_prob'])
         logger.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
             mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
@@ -298,6 +296,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
                        local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
     logger.info("Best config nn is: " +
                 str(results.get_best_config(metric="mean_loss", mode="min")))
+    # btm['neural_net'] = results.get_best_checkpoint()
     return btm
 
 
