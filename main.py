@@ -284,13 +284,13 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     def train_nn(config: dict):
         train_loader = DataLoader(
             Dataset(X_train, Y_train), config['batch_size'], shuffle=True, drop_last=True)
-        mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], len(
-            np.unique(Y_train)), config['number_hidden_layers'], config['dropout_prob'])
+        mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], Y_train.max(
+        ).astype(int)+1, config['number_hidden_layers'], config['dropout_prob'])
         logger.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
             mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
         tune.report(mean_loss=loss[-1])
-        plt.plot(range(config['epochs']), loss)
+        plt.plot(range(0, len(loss)), loss)
         plot(["Epochs", "Loss"], "mlp_loss_progr")
     results = tune.run(train_nn, config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
