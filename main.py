@@ -226,9 +226,10 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 1  # 10
-    cv = 2  # 5
+    n_iter = 10  # 10
+    cv = 5  # 5
     verbose = 1
+    scoring = "accuracy"
     btm = {}  # best trained models
     # Naive Bayes
     nb = GaussianNB()
@@ -243,7 +244,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
                    'max_depth': list(range(10, 30, 5))+[None], 'min_samples_split': list(range(2, 11, 2))}
     estimator = RandomForestClassifier(n_jobs, random_state=__SEED)
     rf = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs, verbose=verbose,
-                            cv=cv, scoring='accuracy', n_iter=n_iter)
+                            cv=cv, scoring=scoring, n_iter=n_iter)
     rf.fit(X_train, Y_train)
     btm['random_forest'] = rf.best_estimator_
     dump(rf.best_estimator_, os.path.join(
@@ -256,7 +257,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
                    'C': np.linspace(1, 5, 5)}
     estimator = SVC()
     svc = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs,
-                             verbose=verbose, cv=cv, scoring='accuracy', n_iter=n_iter)
+                             verbose=verbose, cv=cv, scoring=scoring, n_iter=n_iter)
     svc.fit(X_train, Y_train)
     btm['support_vector'] = svc.best_estimator_
     dump(svc.best_estimator_, os.path.join(
