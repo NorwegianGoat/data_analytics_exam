@@ -1,5 +1,4 @@
 from joblib import dump, load
-import argparse
 import io
 from time import time
 from typing import Dict, Tuple
@@ -23,7 +22,6 @@ from collections import OrderedDict
 import torch
 from torch.utils.data import DataLoader
 from ray import tune
-import seaborn as sn
 
 __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
@@ -51,23 +49,26 @@ class Dataset(torch.utils.data.Dataset):
 
 
 class NeuralNetwork(torch.nn.Module):
-    def __init__(self, input_layer_size: int, hidden_layer_size: int, output_layer_size: int, number_hidden_layers: int):
+    def __init__(self, input_layer_size: int, hidden_layer_size: int, output_layer_size: int, number_hidden_layers: int, dropout_prob: int):
         super(NeuralNetwork, self).__init__()
         self.device = _available_devices()
         self.input_layer_size = input_layer_size
         self.hidden_layer_size = hidden_layer_size
         self.number_hidden_layers = number_hidden_layers
+        self.dropout_prob = dropout_prob
         # Input layer + output layer + hidden layers
         self.number_of_layers = number_hidden_layers+2
         self.output_layer_size = output_layer_size  # The number of output classes
         self.activation_function = torch.nn.ReLU()
         # Building the layers
         layers = OrderedDict()
+        layers[str(len(layers))] = torch.nn.Dropout(p=dropout_prob)
         layers[str(len(layers))] = torch.nn.Linear(
             input_layer_size, hidden_layer_size)
         layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
         layers[str(len(layers))] = self.activation_function
         for i in range(0, number_hidden_layers):
+            layers[str(len(layers))] = torch.nn.Dropout(p=dropout_prob)
             layers[str(len(layers))] = torch.nn.Linear(
                 hidden_layer_size, hidden_layer_size)
             layers[str(len(layers))] = torch.nn.BatchNorm1d(hidden_layer_size)
@@ -120,6 +121,7 @@ class NeuralNetwork(torch.nn.Module):
                     "hidden_size": self.hidden_layer_size,
                     "number_of_layers": self.number_of_layers,
                     "number_hidden_layers": self.number_hidden_layers,
+                    "dropout_probability": self.dropout_prob,
                     "output_layer_size": self.output_layer_size,
                     "activation_function": self.activation_function})
 
@@ -198,7 +200,7 @@ def dim_reduction(X_train, X_val, X_test, y_train):
     X_val = projector.transform(X_val)
     X_test = projector.transform(X_test)
     # plt.plot(projector.explained_variance_ratio_)
-    #plot(["Dimension", "Explained var."], "lda_variance")
+    # plot(["Dimension", "Explained var."], "lda_variance")
     logger.debug("Shape after dim. reduction" + str(X_train.shape))
     logger.debug(X_train)
     return X_train, X_val, X_test
@@ -226,8 +228,8 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 10  # 10
-    cv = 5  # 5
+    n_iter = 1  # 10
+    cv = 2  # 5
     verbose = 1
     scoring = "accuracy"
     btm = {}  # best trained models
@@ -264,7 +266,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
     logger.info("Support vector best params: " + str(svc.best_params_))
     print("Support vector accuracy score: %f" % svc.best_score_)
-    '''# MLP
+    # MLP
     logger.info("This device has " +
                 _available_devices().type + " available.")
     # MLP hyperparams
@@ -276,15 +278,16 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     momentum = tune.loguniform(9e-3, 9e-2)
     batch_size = tune.choice([8, 16, 32, 64])
     epochs = tune.choice([50, 100, 200, 400])
+    dropout_prob = tune.loguniform(0.05, 0.3)
     configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
-               "epochs": epochs}
+               "epochs": epochs, "droput_prob": dropout_prob}
 
     def train_nn(config: dict):
         train_loader = DataLoader(
             Dataset(X_train, Y_train), config['batch_size'], shuffle=True, drop_last=True)
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], len(
-            Y_train.unique()), config['number_hidden_layers'])
+            Y_train.unique()), config['number_hidden_layers'], config['dropout_prob'])
         logger.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
             mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
@@ -294,7 +297,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     results = tune.run(train_nn, config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
     logger.info("Best config nn is: " +
-                str(results.get_best_config(metric="mean_loss", mode="min")))'''
+                str(results.get_best_config(metric="mean_loss", mode="min")))
     return btm
 
 
