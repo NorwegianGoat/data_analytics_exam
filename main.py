@@ -36,10 +36,10 @@ def _available_devices() -> torch.device:
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, X: pd.DataFrame, Y: pd.Series):
+    def __init__(self, X: np.ndarray, Y: np.ndarray):
         self.X = torch.FloatTensor(X)
         self.Y = torch.LongTensor(Y)
-        self.classes = len(self.Y.unique())
+        self.classes = Y.max().astype(int)
 
     def __len__(self):
         return self.X.shape[0]
@@ -84,10 +84,9 @@ class NeuralNetwork(torch.nn.Module):
 
     def _train(self, criterion, optimizer, epochs, data: DataLoader):
         self.train()
-        epoch_loss = []
+        loss_updates = []
         for epoch in range(epochs):
             # Minibatch, we iterate over data passed by data loader for each epoch
-            epoch_loss = []
             for batch in data:
                 # We only send the the batches we use to device, in this way we
                 # use less GPU ram
@@ -99,13 +98,13 @@ class NeuralNetwork(torch.nn.Module):
                 y_pred = self.forward(x)
                 # Backpropagation
                 loss = criterion(y_pred, y)
-                epoch_loss.append(loss.item())
+                loss_updates.append(loss.item())
                 loss.backward()
                 optimizer.step()
-            logger.info("Epoch: " + str(epoch) + " avg. loss: " +
-                        str(loss))
+            logger.info("Epoch: " + str(epoch) + " latest avg. loss: " +
+                        str(loss_updates[-1]))
         # Returns the trained neural net and the loss over the training
-        return self, epoch_loss
+        return self, loss_updates
 
     def _test(self, X_val, Y_val):
         # Puts the nn in test mode, no dropout, etc.
@@ -222,19 +221,19 @@ def resample_data(X_train, y_train) -> Tuple[np.ndarray, np.ndarray]:
     return X_train, y_train
 
 
-def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y_test):
+def train_models():
     logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 1  # 10
-    cv = 2  # 5
-    verbose = 1
+    n_iter = 10  # 10
+    cv = 5  # 5
+    verbose = 3  # 1
     scoring = "accuracy"
     btm = {}  # best trained models
     # Naive Bayes
     nb = GaussianNB()
-    nb.fit(X_train, Y_train)
-    y_pred = nb.predict(x_test)
+    nb.fit(Xr_train, yr_train)
+    y_pred = nb.predict(Xr_test)
     print("Naive Bayes accuracy score %f" %
           accuracy_score(y_test, y_pred))
     dump(nb, os.path.join(__DUMP_MODELS_PATH, 'naive_bayes.joblib'))
@@ -245,7 +244,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     estimator = RandomForestClassifier(n_jobs, random_state=__SEED)
     rf = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs, verbose=verbose,
                             cv=cv, scoring=scoring, n_iter=n_iter)
-    rf.fit(X_train, Y_train)
+    rf.fit(Xr_train, yr_train)
     btm['random_forest'] = rf.best_estimator_
     dump(rf.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'random_forest.joblib'))
@@ -258,7 +257,7 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     estimator = SVC()
     svc = RandomizedSearchCV(estimator, hyperparams, n_jobs=n_jobs,
                              verbose=verbose, cv=cv, scoring=scoring, n_iter=n_iter)
-    svc.fit(X_train, Y_train)
+    svc.fit(Xr_train, yr_train)
     btm['support_vector'] = svc.best_estimator_
     dump(svc.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
@@ -273,30 +272,35 @@ def train_models(X_train: np.ndarray, Y_train: np.ndarray, x_test: np.ndarray, y
     number_hidden_layers = tune.sample_from(
         lambda _: 2**np.random.randint(1, 6))
     learning_rate = tune.loguniform(1e-3, 1e-1)
-    momentum = tune.loguniform(9e-3, 9e-2)
-    batch_size = tune.choice([8, 16, 32, 64])
+    momentum = tune.loguniform(9e-3, 9e-1)
+    batch_size = tune.choice([32, 256, 512, 1024, 2048])
     epochs = tune.choice([50, 100, 200, 400])
-    dropout_prob = tune.loguniform(0.05, 0.3)
+    dropout_prob = tune.loguniform(0.05, 0.01)
     configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
                "epochs": epochs, "dropout_prob": dropout_prob}
 
     def train_nn(config: dict):
         train_loader = DataLoader(
-            Dataset(X_train, Y_train), config['batch_size'], shuffle=True, drop_last=True)
-        mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], Y_train.max(
+            Dataset(X_train, y_train), config['batch_size'], shuffle=True, drop_last=True)
+        mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], y_train.max(
         ).astype(int)+1, config['number_hidden_layers'], config['dropout_prob'])
         logger.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
             mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
         tune.report(mean_loss=loss[-1])
         plt.plot(range(0, len(loss)), loss)
-        plot(["Epochs", "Loss"], "mlp_loss_progr")
+        plot(["Epochs", "Loss"], "mlp_loss_progr_minib_bnorm_drop")
     results = tune.run(train_nn, config=configs,
-                       local_dir=os.path.realpath("."), verbose=verbose, num_samples=n_iter, resources_per_trial=tune_res)
+                       local_dir=os.path.realpath("."), verbose=verbose,
+                       num_samples=n_iter, resources_per_trial=tune_res)
+    # Just for manual test purposes
+    '''train_nn(config={"hidden_layer_size": 6, "number_hidden_layers": 4,
+                     "learning_rate": 0.01, "momentum": 0.09, "batch_size": 2048,
+                     "epochs": 200, "dropout_prob": 0.05})'''
     logger.info("Best config nn is: " +
                 str(results.get_best_config(metric="mean_loss", mode="min")))
-    # btm['neural_net'] = results.get_best_checkpoint()
+    #btm['neural_net'] = results.get_best_checkpoint()
     return btm
 
 
@@ -345,14 +349,15 @@ if __name__ == "__main__":
         df[:, :-1], df[:, -1], test_size=0.2)
     X_train, X_val, y_train, y_val = train_test_split(
         X_train, y_train, test_size=0.25)
-    # Dimensionality reduction
-    X_train, X_val, X_test = dim_reduction(X_train, X_val, X_test, y_train)
-    plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train)
+    # Dimensionality reduction. Datasets with r are the ones with dim reduction
+    Xr_train, Xr_val, Xr_test = dim_reduction(X_train, X_val, X_test, y_train)
+    plt.scatter(Xr_train[:, 0], Xr_train[:, 1], c=y_train)
     plot(["x0", "x1"], "lda_scatterplot_data")
     # Data resampling
+    Xr_train, yr_train = resample_data(Xr_train, y_train)
     X_train, y_train = resample_data(X_train, y_train)
     # Models train
-    trained_models = train_models(X_train, y_train, X_val, y_val)
-    test_models(trained_models, X_test, y_test)
+    trained_models = train_models()
+    test_models(trained_models)
     # Models test
     logger.info("Elapsed time " + str(time()-t0) + "s")
