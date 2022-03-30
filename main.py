@@ -230,7 +230,7 @@ def train_models():
     verbose = 3  # 1
     scoring = "accuracy"
     btm = {}  # best trained models
-    # Naive Bayes
+    '''# Naive Bayes
     nb = GaussianNB()
     nb.fit(Xr_train, yr_train)
     y_pred = nb.predict(Xr_test)
@@ -262,20 +262,19 @@ def train_models():
     dump(svc.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
     logger.info("Support vector best params: " + str(svc.best_params_))
-    print("Support vector accuracy score: %f" % svc.best_score_)
+    print("Support vector accuracy score: %f" % svc.best_score_)'''
     # MLP
     logger.info("This device has " +
                 _available_devices().type + " available.")
-    # MLP hyperparams
     tune_res = {'gpu': 1 if _available_devices().type != 'cpu' else 0}
     hidden_layer_size = tune.sample_from(lambda _: 2**np.random.randint(3, 10))
     number_hidden_layers = tune.sample_from(
         lambda _: 2**np.random.randint(1, 6))
-    learning_rate = tune.loguniform(1e-3, 1e-1)
-    momentum = tune.loguniform(9e-3, 9e-1)
+    learning_rate = tune.uniform(1e-3, 1e-1)
+    momentum = tune.uniform(9e-3, 9e-1)
     batch_size = tune.choice([32, 256, 512, 1024, 2048])
     epochs = tune.choice([50, 100, 200, 400])
-    dropout_prob = tune.loguniform(0.05, 0.01)
+    dropout_prob = tune.uniform(0.05, 0.01)
     configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
                "epochs": epochs, "dropout_prob": dropout_prob}
