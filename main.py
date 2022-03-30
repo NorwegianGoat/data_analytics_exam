@@ -279,7 +279,7 @@ def train_models():
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
                "epochs": epochs, "dropout_prob": dropout_prob}
 
-    def train_nn(config: dict):
+    def train_nn(config: dict, X_train, y_train):
         train_loader = DataLoader(
             Dataset(X_train, y_train), config['batch_size'], shuffle=True, drop_last=True)
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], y_train.max(
@@ -290,7 +290,8 @@ def train_models():
         tune.report(mean_loss=loss[-1])
         plt.plot(range(0, len(loss)), loss)
         plot(["Epochs", "Loss"], "mlp_loss_progr_minib_bnorm_drop")
-    results = tune.run(train_nn, config=configs,
+
+    results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose,
                        num_samples=n_iter, resources_per_trial=tune_res)
     # Just for manual test purposes
