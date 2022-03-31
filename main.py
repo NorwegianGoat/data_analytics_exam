@@ -22,6 +22,7 @@ from collections import OrderedDict
 import torch
 from torch.utils.data import DataLoader
 from ray import tune
+from ray.tune.schedulers import ASHAScheduler
 
 __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
@@ -225,7 +226,7 @@ def train_models():
     logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 10  # 10
+    n_iter = 2  # 10
     cv = 5  # 5
     verbose = 3  # 1
     scoring = "accuracy"
@@ -292,8 +293,13 @@ def train_models():
         plot(["Epochs", "Loss"], "mlp_loss_progr_minib_bnorm_drop")
 
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
-                       local_dir=os.path.realpath("."), verbose=verbose,
+                       local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="mean_loss", mode="min"),
                        num_samples=n_iter, resources_per_trial=tune_res)
+    draw = None
+    for df in results.trial_dataframes:
+        for value in df['mean_loss']:
+            draw = item.mean_loss.plot(ax=draw)
+    plot(['Loss', 'Updates'], 'ASHAScheduler')
     # Just for manual test purposes
     '''train_nn(config={"hidden_layer_size": 6, "number_hidden_layers": 4,
                      "learning_rate": 0.01, "momentum": 0.09, "batch_size": 2048,
