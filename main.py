@@ -100,6 +100,7 @@ class NeuralNetwork(torch.nn.Module):
                 # Backpropagation
                 loss = criterion(y_pred, y)
                 loss_updates.append(loss.item())
+                tune.report(mean_loss=loss.item())
                 loss.backward()
                 optimizer.step()
             logger.info("Epoch: " + str(epoch) + " latest avg. loss: " +
@@ -226,7 +227,7 @@ def train_models():
     logger.info("Training models")
     # Params for hyperparams tuner
     n_jobs = os.cpu_count()-1
-    n_iter = 2  # 10
+    n_iter = 10  # 10
     cv = 5  # 5
     verbose = 3  # 1
     scoring = "accuracy"
@@ -288,18 +289,18 @@ def train_models():
         logger.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
             mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
-        tune.report(mean_loss=loss[-1])
+        # Local plot (just for this specific training session)
         plt.plot(range(0, len(loss)), loss)
         plot(["Epochs", "Loss"], "mlp_loss_progr_minib_bnorm_drop")
 
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="mean_loss", mode="min"),
-                       num_samples=n_iter, resources_per_trial=tune_res)
+                       num_samples=50, resources_per_trial=tune_res)
+    # Global plot of the scheduled jobs of ray tune
     draw = None
-    for df in results.trial_dataframes:
-        for value in df['mean_loss']:
-            draw = item.mean_loss.plot(ax=draw)
-    plot(['Loss', 'Updates'], 'ASHAScheduler')
+    for df in results.trial_dataframes.values():
+        draw = df.mean_loss.plot(ax=draw)
+    plot(['Updates', 'Loss'], 'early_stopping_ASHAScheduler')
     # Just for manual test purposes
     '''train_nn(config={"hidden_layer_size": 6, "number_hidden_layers": 4,
                      "learning_rate": 0.01, "momentum": 0.09, "batch_size": 2048,
