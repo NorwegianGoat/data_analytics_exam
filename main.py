@@ -83,12 +83,13 @@ class NeuralNetwork(torch.nn.Module):
         logits = self.linear_relu_stack(x)
         return logits
 
-    def _train(self, criterion, optimizer, epochs, data: DataLoader):
-        self.train()
+    def _train(self, criterion, optimizer, epochs, train: DataLoader, validation: Dataset):
         loss_updates = []
+        grace = 5  # Used as relaxation condition for early stopping
         for epoch in range(epochs):
+            self.train()
             # Minibatch, we iterate over data passed by data loader for each epoch
-            for batch in data:
+            for batch in train:
                 # We only send the the batches we use to device, in this way we
                 # use less GPU ram
                 x = batch[0].to(self.device)
@@ -100,20 +101,35 @@ class NeuralNetwork(torch.nn.Module):
                 # Backpropagation
                 loss = criterion(y_pred, y)
                 loss_updates.append(loss.item())
-                tune.report(mean_loss=loss.item())
+                tune.report(loss=loss.item())
                 loss.backward()
                 optimizer.step()
-            logger.info("Epoch: " + str(epoch) + " latest avg. loss: " +
+            logger.info("Epoch: " + str(epoch) + " latest loss: " +
                         str(loss_updates[-1]))
+            if self._test(validation, criterion) > loss_updates[-1]:
+                # If the loss on the validation set is bigger we stop
+                # the learning phase
+                if grace > 0:
+                    grace -= 1
+                else:
+                    break
         # Returns the trained neural net and the loss over the training
         return self, loss_updates
 
-    def _test(self, X_val, Y_val):
+    def _test(self, testset: DataLoader, criterion=None):
         # Puts the nn in test mode, no dropout, etc.
         self.eval()
-        y_pred = self.forward(X_val)
-        logger.info(y_pred)
-        y_pred = y_pred.argmax()
+        y_test = None
+        y_pred = None
+        for x, y in testset:
+            y_test = y.to(self.device)
+            y_pred = self.forward(x.to(self.device))
+        if criterion:
+            loss = criterion(y_pred, y_test)
+            logger.info("Loss on the valset: %f." % loss.item())
+            return loss.item()
+        logger.debug(y_pred)
+        # TODO: Add accuracy, etc
 
     def __str__(self) -> str:
         return str({"input_size": self.input_layer_size,
@@ -284,30 +300,32 @@ def train_models():
     def train_nn(config: dict, X_train, y_train):
         train_loader = DataLoader(
             Dataset(X_train, y_train), config['batch_size'], shuffle=True, drop_last=True)
+        val_loader = DataLoader(Dataset(X_val, y_val), X_val.shape[0])
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], y_train.max(
         ).astype(int)+1, config['number_hidden_layers'], config['dropout_prob'])
         logger.info(mlp)
         mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
-            mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader)
+            mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader, val_loader)
         # Local plot (just for this specific training session)
         plt.plot(range(0, len(loss)), loss)
-        plot(["Epochs", "Loss"], "mlp_loss_progr_minib_bnorm_drop")
+        plot(["Updates", "Loss"], "mlp_loss_progr_minib_bnorm_drop")
 
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
-                       local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="mean_loss", mode="min"),
+                       local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="loss", mode="min"),
                        num_samples=50, resources_per_trial=tune_res)
     # Global plot of the scheduled jobs of ray tune
     draw = None
     for df in results.trial_dataframes.values():
-        draw = df.mean_loss.plot(ax=draw)
+        draw = df.loss.plot(ax=draw)
     plot(['Updates', 'Loss'], 'early_stopping_ASHAScheduler')
-    # Just for manual test purposes
-    '''train_nn(config={"hidden_layer_size": 6, "number_hidden_layers": 4,
-                     "learning_rate": 0.01, "momentum": 0.09, "batch_size": 2048,
-                     "epochs": 200, "dropout_prob": 0.05})'''
     logger.info("Best config nn is: " +
-                str(results.get_best_config(metric="mean_loss", mode="min")))
-    #btm['neural_net'] = results.get_best_checkpoint()
+                str(results.get_best_config(metric="loss", mode="min")))
+    # btm['neural_net'] = results.get_best_checkpoint()
+
+    '''# Just for manual test purposes
+    train_nn({"hidden_layer_size": 6, "number_hidden_layers": 4,
+              "learning_rate": 0.01, "momentum": 0.09, "batch_size": 2048,
+              "epochs": 200, "dropout_prob": 0.05}, X_train, y_train)'''
     return btm
 
 
