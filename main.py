@@ -295,7 +295,7 @@ def train_models():
     learning_rate = tune.uniform(1e-3, 1e-1)
     momentum = tune.uniform(9e-3, 9e-1)
     batch_size = tune.choice([32, 256, 512, 1024, 2048])
-    epochs = tune.choice([50, 100, 200, 400])
+    epochs = tune.choice([100, 200, 300, 400])
     dropout_prob = tune.uniform(0.05, 0.01)
     configs = {"hidden_layer_size": hidden_layer_size, "number_hidden_layers": number_hidden_layers,
                "learning_rate": learning_rate, "momentum": momentum, "batch_size": batch_size,
@@ -320,7 +320,7 @@ def train_models():
     ray.init(log_to_driver=False, logging_level=logging.CRITICAL)
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="loss", mode="min"),
-                       search_alg=BasicVariantGenerator(random_state=np.random.RandomState(__SEED)), num_samples=5, resources_per_trial=tune_res)
+                       search_alg=BasicVariantGenerator(random_state=np.random.RandomState(__SEED)), num_samples=50, resources_per_trial=tune_res)
     # Global plot of the scheduled jobs of ray tune
     draw = None
     for df in results.trial_dataframes.values():
