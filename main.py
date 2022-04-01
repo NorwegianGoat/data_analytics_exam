@@ -1,3 +1,5 @@
+# @Author: Riccardo Mioli - riccardo.mioli2@studio.unibo.it - 983525
+# @Date: 01/04/2022 (gg/mm/aaaa)
 from joblib import dump, load
 import io
 from time import time
