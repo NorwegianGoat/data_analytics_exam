@@ -23,6 +23,7 @@ import torch
 from torch.utils.data import DataLoader
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
+import ray
 
 __DATA_PATH = './ml-25m'
 __DUMP_MODELS_PATH = './models'
@@ -101,11 +102,12 @@ class NeuralNetwork(torch.nn.Module):
                 # Backpropagation
                 loss = criterion(y_pred, y)
                 loss_updates.append(loss.item())
-                tune.report(loss=loss.item())
+                if tune.is_session_enabled():
+                    tune.report(loss=loss.item())
                 loss.backward()
                 optimizer.step()
-            logger.info("Epoch: " + str(epoch) + " latest loss: " +
-                        str(loss_updates[-1]))
+            logger.debug("Epoch: " + str(epoch) + " latest loss: " +
+                         str(loss_updates[-1]))
             if self._test(validation, criterion) > loss_updates[-1]:
                 # If the loss on the validation set is bigger we stop
                 # the learning phase
@@ -126,10 +128,11 @@ class NeuralNetwork(torch.nn.Module):
             y_pred = self.forward(x.to(self.device))
         if criterion:
             loss = criterion(y_pred, y_test)
-            logger.info("Loss on the valset: %f." % loss.item())
+            logger.debug("Loss on the valset: %f." % loss.item())
+            logger.debug(y_pred)
             return loss.item()
-        logger.debug(y_pred)
-        # TODO: Add accuracy, etc
+        else:
+            return y_pred.argmax(dim=1, keepdim=True).squeeze().to("cpu")
 
     def __str__(self) -> str:
         return str({"input_size": self.input_layer_size,
@@ -304,12 +307,16 @@ def train_models():
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], y_train.max(
         ).astype(int)+1, config['number_hidden_layers'], config['dropout_prob'])
         logger.info(mlp)
-        mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(), torch.optim.SGD(
-            mlp.parameters(), config['learning_rate'], config['momentum']), config['epochs'], train_loader, val_loader)
+        optimizer = torch.optim.SGD(
+            mlp.parameters(), config['learning_rate'], config['momentum'])
+        mlp, loss = mlp._train(torch.nn.CrossEntropyLoss(
+        ), optimizer, config['epochs'], train_loader, val_loader)
         # Local plot (just for this specific training session)
         plt.plot(range(0, len(loss)), loss)
         plot(["Updates", "Loss"], "mlp_loss_progr_minib_bnorm_drop")
+        return mlp
 
+    ray.init(log_to_driver=False, logging_level=logging.CRITICAL)
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="loss", mode="min"),
                        num_samples=50, resources_per_trial=tune_res)
@@ -318,10 +325,13 @@ def train_models():
     for df in results.trial_dataframes.values():
         draw = df.loss.plot(ax=draw)
     plot(['Updates', 'Loss'], 'early_stopping_ASHAScheduler')
+    # Save best config
     logger.info("Best config nn is: " +
                 str(results.get_best_config(metric="loss", mode="min")))
-    # btm['neural_net'] = results.get_best_checkpoint()
-
+    mlp = train_nn(results.get_best_config(
+        metric="loss", mode="min"), X_train, y_train)
+    torch.save(mlp, os.path.join(__DUMP_MODELS_PATH, 'nn_dump'))
+    btm['neural_net'] = mlp
     '''# Just for manual test purposes
     train_nn({"hidden_layer_size": 6, "number_hidden_layers": 4,
               "learning_rate": 0.01, "momentum": 0.09, "batch_size": 2048,
@@ -329,22 +339,26 @@ def train_models():
     return btm
 
 
-def test_models(models: Dict[str, BaseEstimator], X_test, Y_test):
+def test_models(models: Dict[str, BaseEstimator], Xr_test, X_test, y_test):
     logger.info("Testing models")
     for key, model in models.items():
-        y_pred = model.predict(X_test)
+        if key != "neural_net":
+            y_pred = model.predict(Xr_test)
+        else:
+            testset = DataLoader(Dataset(X_test, y_test), X_test.shape[0])
+            y_pred = model._test(testset).numpy().astype(int)
         average = "macro"
         zero_div = 0
         precision = precision_score(
-            Y_test, y_pred, average=average, zero_division=zero_div)
+            y_test, y_pred, average=average, zero_division=zero_div)
         recall = recall_score(
-            Y_test, y_pred, average=average, zero_division=zero_div)
-        f1 = f1_score(Y_test, y_pred, average=average, zero_division=zero_div)
-        accuracy = accuracy_score(Y_test, y_pred)
+            y_test, y_pred, average=average, zero_division=zero_div)
+        f1 = f1_score(y_test, y_pred, average=average, zero_division=zero_div)
+        accuracy = accuracy_score(y_test, y_pred)
         logger.info(key + " Precision: %f. Recall: %f. f1: %f. Accuracy: %f." %
                     (precision, recall, f1, accuracy))
         # Plot confusion
-        cm = confusion_matrix(Y_test, y_pred, labels=encoder.classes_)
+        cm = confusion_matrix(y_test, y_pred, labels=encoder.classes_)
         conf_plot = ConfusionMatrixDisplay(
             confusion_matrix=cm, display_labels=encoder.classes_)
         conf_plot.plot()
@@ -364,6 +378,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     logger.setLevel(level=__logging_level)
     np.random.seed(__SEED)
+    torch.use_deterministic_algorithms(True)
     # Load data
     df = load_data(__DATA_PATH)
     # Data pre-processing
@@ -383,6 +398,6 @@ if __name__ == "__main__":
     X_train, y_train = resample_data(X_train, y_train)
     # Models train
     trained_models = train_models()
-    test_models(trained_models)
+    test_models(trained_models, Xr_test, X_test, y_test)
     # Models test
     logger.info("Elapsed time " + str(time()-t0) + "s")
