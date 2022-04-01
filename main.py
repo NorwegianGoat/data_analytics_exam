@@ -104,7 +104,8 @@ class NeuralNetwork(torch.nn.Module):
                 loss = criterion(y_pred, y)
                 loss_updates.append(loss.item())
                 if tune.is_session_enabled():
-                    tune.report(loss=loss.item())
+                    tune.report(loss=loss.item(), accuracy=accuracy_score(
+                        y.to("cpu"), y_pred.argmax(dim=1, keepdim=True).squeeze().to("cpu")))
                 loss.backward()
                 optimizer.step()
             logger.debug("Epoch: " + str(epoch) + " latest loss: " +
@@ -249,10 +250,10 @@ def train_models():
     n_jobs = os.cpu_count()-1
     n_iter = 10  # 10
     cv = 5  # 5
-    verbose = 0  # 1
+    verbose = 1  # 1
     scoring = "accuracy"
     btm = {}  # best trained models
-    '''# Naive Bayes
+    # Naive Bayes
     nb = GaussianNB()
     nb.fit(Xr_train, yr_train)
     y_pred = nb.predict(Xr_test)
@@ -284,7 +285,7 @@ def train_models():
     dump(svc.best_estimator_, os.path.join(
         __DUMP_MODELS_PATH, 'support_vector.joblib'))
     logger.info("Support vector best params: " + str(svc.best_params_))
-    print("Support vector accuracy score: %f" % svc.best_score_)'''
+    print("Support vector accuracy score: %f" % svc.best_score_)
     # MLP
     logger.info("This device has " +
                 _available_devices().type + " available.")
@@ -319,24 +320,42 @@ def train_models():
 
     ray.init(log_to_driver=False, logging_level=logging.CRITICAL)
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
-                       local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="loss", mode="min"),
+                       scheduler=ASHAScheduler(metric="accuracy", mode="max"),
+                       local_dir=os.path.realpath("."), verbose=verbose,
                        search_alg=BasicVariantGenerator(random_state=np.random.RandomState(__SEED)), num_samples=50, resources_per_trial=tune_res)
-    # Global plot of the scheduled jobs of ray tune
+    # Global plot of jobs pruned by asha scheduler <- loss
     draw = None
     for df in results.trial_dataframes.values():
         draw = df.loss.plot(ax=draw)
-    plot(['Updates', 'Loss'], 'early_stopping_ASHAScheduler')
+    plot(['Updates', 'Loss'], 'loss_early_stopping_ASHAScheduler')
+    # Global plot of jobs pruned by asha scheduler <- accuracy
+    draw = None
+    for df in results.trial_dataframes.values():
+        draw = df.accuracy.plot(ax=draw)
+    plot(['Updates', 'Accuracy'], 'acc_early_stopping_ASHAScheduler')
     # Save best config
     logger.info("Best config nn is: " +
-                str(results.get_best_config(metric="loss", mode="min")))
+                str(results.get_best_config(metric="accuracy", mode="max")))
     mlp = train_nn(results.get_best_config(
-        metric="loss", mode="min"), X_train, y_train)
+        metric="accuracy", mode="max"), X_train, y_train)
+    average = "macro"
+    zero_div = 0
+    y_pred = mlp._test(DataLoader(Dataset(X_train, y_train), X_train.shape[0]))
+    # TODO: Leave only precision
+    precision = precision_score(
+        y_train, y_pred, average=average, zero_division=zero_div)
+    recall = recall_score(
+        y_train, y_pred, average=average, zero_division=zero_div)
+    f1 = f1_score(y_train, y_pred, average=average, zero_division=zero_div)
+    accuracy = accuracy_score(y_train, y_pred)
+    logger.info(" Precision: %f. Recall: %f. f1: %f. Accuracy: %f." %
+                (precision, recall, f1, accuracy))
     torch.save(mlp, os.path.join(__DUMP_MODELS_PATH, 'nn_dump'))
     btm['neural_net'] = mlp
     '''# Just for manual test purposes
-    train_nn({"hidden_layer_size": 6, "number_hidden_layers": 4,
-              "learning_rate": 0.01, "momentum": 0.09, "batch_size": 2048,
-              "epochs": 200, "dropout_prob": 0.05}, X_train, y_train)'''
+    train_nn({"hidden_layer_size": 256, "number_hidden_layers": 2,
+              "learning_rate": 0.04720952643155001, "momentum": 0.7752069024020616, "batch_size": 2048,
+              "epochs": 100, "dropout_prob": 0.047397936280588825}, X_train, y_train)'''
     return btm
 
 
