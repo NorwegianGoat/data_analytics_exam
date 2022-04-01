@@ -290,9 +290,9 @@ def train_models():
     logger.info("This device has " +
                 _available_devices().type + " available.")
     tune_res = {'gpu': 1 if _available_devices().type != 'cpu' else 0}
-    hidden_layer_size = tune.sample_from(lambda _: 2**np.random.randint(3, 10))
+    hidden_layer_size = tune.sample_from(lambda _: 2**np.random.randint(1, 4))
     number_hidden_layers = tune.sample_from(
-        lambda _: 2**np.random.randint(1, 6))
+        lambda _: 2**np.random.randint(1, 4))
     learning_rate = tune.uniform(1e-3, 1e-1)
     momentum = tune.uniform(9e-3, 9e-1)
     batch_size = tune.choice([32, 256, 512, 1024, 2048])
@@ -321,7 +321,7 @@ def train_models():
     ray.init(log_to_driver=False, logging_level=logging.CRITICAL)
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
                        scheduler=ASHAScheduler(metric="accuracy", mode="max"),
-                       local_dir=os.path.realpath("."), verbose=verbose,
+                       local_dir=os.path.realpath("."), verbose=0,
                        search_alg=BasicVariantGenerator(random_state=np.random.RandomState(__SEED)), num_samples=50, resources_per_trial=tune_res)
     # Global plot of jobs pruned by asha scheduler <- loss
     draw = None
@@ -338,24 +338,13 @@ def train_models():
                 str(results.get_best_config(metric="accuracy", mode="max")))
     mlp = train_nn(results.get_best_config(
         metric="accuracy", mode="max"), X_train, y_train)
-    average = "macro"
-    zero_div = 0
     y_pred = mlp._test(DataLoader(Dataset(X_train, y_train), X_train.shape[0]))
-    # TODO: Leave only precision
-    precision = precision_score(
-        y_train, y_pred, average=average, zero_division=zero_div)
-    recall = recall_score(
-        y_train, y_pred, average=average, zero_division=zero_div)
-    f1 = f1_score(y_train, y_pred, average=average, zero_division=zero_div)
-    accuracy = accuracy_score(y_train, y_pred)
-    logger.info(" Precision: %f. Recall: %f. f1: %f. Accuracy: %f." %
-                (precision, recall, f1, accuracy))
+    logger.info("Neural net accuracy: %f." % accuracy_score(y_train, y_pred))
     torch.save(mlp, os.path.join(__DUMP_MODELS_PATH, 'nn_dump'))
     btm['neural_net'] = mlp
     '''# Just for manual test purposes
-    train_nn({"hidden_layer_size": 256, "number_hidden_layers": 2,
-              "learning_rate": 0.04720952643155001, "momentum": 0.7752069024020616, "batch_size": 2048,
-              "epochs": 100, "dropout_prob": 0.047397936280588825}, X_train, y_train)'''
+    btm['neural_net'] = train_nn({"hidden_layer_size": 256, "number_hidden_layers": 2, "learning_rate": 0.04720952643155001,
+                                 "momentum": 0.7752069024020616, "batch_size": 512, "epochs": 100, "dropout_prob": 0.017397936280588825}, X_train, y_train)'''
     return btm
 
 
