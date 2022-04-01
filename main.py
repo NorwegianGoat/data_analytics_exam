@@ -23,6 +23,7 @@ import torch
 from torch.utils.data import DataLoader
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.suggest import BasicVariantGenerator
 import ray
 
 __DATA_PATH = './ml-25m'
@@ -248,7 +249,7 @@ def train_models():
     n_jobs = os.cpu_count()-1
     n_iter = 10  # 10
     cv = 5  # 5
-    verbose = 3  # 1
+    verbose = 0  # 1
     scoring = "accuracy"
     btm = {}  # best trained models
     '''# Naive Bayes
@@ -302,7 +303,7 @@ def train_models():
 
     def train_nn(config: dict, X_train, y_train):
         train_loader = DataLoader(
-            Dataset(X_train, y_train), config['batch_size'], shuffle=True, drop_last=True)
+            Dataset(X_train, y_train), config['batch_size'], shuffle=False, drop_last=True)
         val_loader = DataLoader(Dataset(X_val, y_val), X_val.shape[0])
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], y_train.max(
         ).astype(int)+1, config['number_hidden_layers'], config['dropout_prob'])
@@ -319,7 +320,7 @@ def train_models():
     ray.init(log_to_driver=False, logging_level=logging.CRITICAL)
     results = tune.run(tune.with_parameters(train_nn, X_train=X_train, y_train=y_train), config=configs,
                        local_dir=os.path.realpath("."), verbose=verbose, scheduler=ASHAScheduler(metric="loss", mode="min"),
-                       num_samples=50, resources_per_trial=tune_res)
+                       search_alg=BasicVariantGenerator(random_state=np.random.RandomState(__SEED)), num_samples=5, resources_per_trial=tune_res)
     # Global plot of the scheduled jobs of ray tune
     draw = None
     for df in results.trial_dataframes.values():
@@ -378,6 +379,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     logger.setLevel(level=__logging_level)
     np.random.seed(__SEED)
+    torch.manual_seed(__SEED)
     torch.use_deterministic_algorithms(True)
     # Load data
     df = load_data(__DATA_PATH)
