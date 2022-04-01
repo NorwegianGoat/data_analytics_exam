@@ -303,7 +303,7 @@ def train_models():
 
     def train_nn(config: dict, X_train, y_train):
         train_loader = DataLoader(
-            Dataset(X_train, y_train), config['batch_size'], shuffle=False, drop_last=True)
+            Dataset(X_train, y_train), config['batch_size'], shuffle=True, drop_last=True)
         val_loader = DataLoader(Dataset(X_val, y_val), X_val.shape[0])
         mlp = NeuralNetwork(X_train.shape[1], config['hidden_layer_size'], y_train.max(
         ).astype(int)+1, config['number_hidden_layers'], config['dropout_prob'])
